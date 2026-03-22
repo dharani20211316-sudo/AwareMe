@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Select Your Platform - AwareMe</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<style>
+    :root {
+        --bg-dark: #0B1413; 
+        --accent-primary: #74C69D; 
+        --soft-mint: #D8F3DC; 
+        --text-muted: #94A3A1;
+        
+        --color-silver: #C0C0C0;
+        --color-forest: #2D6A4F;
+        --color-champagne: #F7E7CE;
+        --color-slate: #708090;
+
+        --ig-glow: rgba(193, 53, 132, 0.5);
+        --yt-glow: rgba(255, 0, 0, 0.5);
+        --rd-glow: rgba(255, 69, 0, 0.5);
+        --tw-glow: rgba(29, 161, 242, 0.5);
+        --ss-glow: rgba(116, 198, 157, 0.6); /* Mint glow for SafeSpace */
+    }
+
+    body {
+        margin: 0;
+        background: radial-gradient(circle at center, #0E2623 0%, var(--bg-dark) 100%);
+        color: white;
+        font-family: 'Inter', sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        overflow: hidden;
+        position: relative;
+    }
+
+    /* Background Shapes */
+    .shape {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(80px);
+        z-index: 0;
+        opacity: 0.15;
+        animation: float 20s ease-in-out infinite;
+    }
+    .silver { width: 400px; height: 400px; background: var(--color-silver); top: -10%; left: -5%; }
+    .forest { width: 500px; height: 500px; background: var(--color-forest); bottom: -10%; right: -5%; animation-delay: -5s; }
+    .champagne { width: 300px; height: 300px; background: var(--color-champagne); top: 20%; right: 10%; animation-delay: -10s; }
+    .slate { width: 350px; height: 350px; background: var(--color-slate); bottom: 15%; left: 10%; animation-delay: -15s; }
+
+    @keyframes float {
+        0%, 100% { transform: translate(0, 0) scale(1); }
+        33% { transform: translate(30px, 50px) scale(1.1); }
+        66% { transform: translate(-20px, 20px) scale(0.9); }
+    }
+
+    header {
+        position: relative;
+        z-index: 2;
+        letter-spacing: 12px;
+        font-weight: 900;
+        text-transform: uppercase;
+        font-size: 14px;
+        margin-bottom: 40px;
+        color: var(--accent-primary);
+        opacity: 0.8;
+    }
+
+    .carousel-container {
+        position: relative;
+        z-index: 2;
+        width: 100%;
+        overflow: hidden;
+        padding: 60px 0;
+        mask-image: linear-gradient(to right, transparent, black 20%, black 80%, transparent);
+        -webkit-mask-image: linear-gradient(to right, transparent, black 20% , black 80%, transparent);
+    }
+
+    .carousel-track {
+        display: flex;
+        width: max-content;
+        animation: scroll 45s linear infinite; /* Adjusted speed for more cards */
+    }
+
+    .platform-link {
+        text-decoration: none;
+        margin: 0 25px;
+        display: block;
+        cursor: pointer;
+    }
+
+    .platform-card {
+        width: 320px;
+        height: 450px;
+        background: rgba(7, 18, 17, 0.8);
+        backdrop-filter: blur(10px);
+        border-radius: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        border: 1px solid rgba(116, 198, 157, 0.1);
+        transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .platform-card img {
+        width: 70%;
+        height: auto;
+        mix-blend-mode: screen;
+        opacity: 0.85;
+        transition: transform 0.6s ease;
+    }
+
+    .platform-link:hover .platform-card {
+        transform: scale(1.03) translateY(-10px);
+    }
+
+    /* Glows */
+    .platform-link:hover .ig-card { box-shadow: 0 0 50px var(--ig-glow); border-color: #c13584; }
+    .platform-link:hover .yt-card { box-shadow: 0 0 50px var(--yt-glow); border-color: #ff0000; }
+    .platform-link:hover .rd-card { box-shadow: 0 0 50px var(--rd-glow); border-color: #ff4500; }
+    .platform-link:hover .tw-card { box-shadow: 0 0 50px var(--tw-glow); border-color: #1da1f2; }
+    .platform-link:hover .ss-card { box-shadow: 0 0 50px var(--ss-glow); border-color: var(--accent-primary); }
+
+    .platform-name {
+        position: absolute;
+        bottom: 30px;
+        letter-spacing: 4px;
+        text-transform: uppercase;
+        font-size: 11px;
+        color: var(--soft-mint);
+        opacity: 0;
+        transition: opacity 0.4s ease;
+    }
+
+    .platform-link:hover .platform-name { opacity: 0.7; }
+
+    @keyframes scroll {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(-50%); }
+    }
+
+    footer { position: relative; z-index: 2; margin-top: 50px; text-align: center; }
+    .footer-text { letter-spacing: 5px; color: var(--text-muted); font-size: 10px; font-weight: bold; opacity: 0.5; }
+</style>
+</head>
+<body id="main-body">
+
+<div class="shape silver"></div>
+<div class="shape forest"></div>
+<div class="shape champagne"></div>
+<div class="shape slate"></div>
+
+<header>Select Platform to Analyze</header>
+
+<div class="carousel-container">
+    <div class="carousel-track" id="track">
+        <a href="javascript:void(0);" onclick="navigateToCalendar('safespace')" class="platform-link">
+            <div class="platform-card ss-card">
+                <img src="{{ url_for('static', filename='safespace_3d.png') }}" alt="SafeSpace">
+                <div class="platform-name">SafeSpace Chat</div>
+            </div>
+        </a>
+
+        <a href="javascript:void(0);" onclick="navigateToCalendar('youtube')" class="platform-link">
+            <div class="platform-card yt-card">
+                <img src="{{ url_for('static', filename='From KlickPin CF Social Media Icon Youtube 3D Premium PSD.jpg') }}" alt="YouTube">
+                <div class="platform-name">YouTube</div>
+            </div>
+        </a>
+
+        <a href="/instagram-analysis" class="platform-link">
+            <div class="platform-card ig-card">
+                <img src="{{ url_for('static', filename='Social media icon instagram 3d _ Premium PSD _ Social media icons Media icon Instagram icons.jpg') }}" alt="Instagram">
+                <div class="platform-name">Instagram</div>
+            </div>
+        </a>
+
+        <a href="/reddit-analysis" class="platform-link">
+            <div class="platform-card rd-card">
+                <img src="{{ url_for('static', filename='Reddit.png') }}" alt="Reddit">
+                <div class="platform-name">Reddit</div>
+            </div>
+        </a>
+
+        <a href="/twitter-analysis" class="platform-link">
+            <div class="platform-card tw-card">
+                <img src="{{ url_for('static', filename='Twitter.png') }}" alt="Twitter">
+                <div class="platform-name">Twitter / X</div>
+            </div>
+        </a>
+        
+        <a href="javascript:void(0);" onclick="navigateToCalendar('safespace')" class="platform-link">
+            <div class="platform-card ss-card"><img src="{{ url_for('static', filename='safespace_3d.png') }}"><div class="platform-name">SafeSpace Chat</div></div>
+        </a>
+        <a href="javascript:void(0);" onclick="navigateToCalendar('youtube')" class="platform-link">
+            <div class="platform-card yt-card"><img src="{{ url_for('static', filename='From KlickPin CF Social Media Icon Youtube 3D Premium PSD.jpg') }}"><div class="platform-name">YouTube</div></div>
+        </a>
+        <a href="/instagram-analysis" class="platform-link">
+            <div class="platform-card ig-card"><img src="{{ url_for('static', filename='Social media icon instagram 3d _ Premium PSD _ Social media icons Media icon Instagram icons.jpg') }}"><div class="platform-name">Instagram</div></div>
+        </a>
+        <a href="/reddit-analysis" class="platform-link">
+            <div class="platform-card rd-card"><img src="{{ url_for('static', filename='Reddit.png') }}"><div class="platform-name">Reddit</div></div>
+        </a>
+        <a href="/twitter-analysis" class="platform-link">
+            <div class="platform-card tw-card"><img src="{{ url_for('static', filename='Twitter.png') }}"><div class="platform-name">Twitter / X</div></div>
+        </a>
+    </div>
+</div>
+
+<footer>
+    <div class="footer-text">AWAREME INTERFACE 2026</div>
+</footer>
+
+<script>
+    function navigateToCalendar(platform) {
+        // Stop the carousel animation
+        document.getElementById('track').style.animationPlayState = 'paused';
+
+        // GSAP Animation
+        gsap.to(".carousel-container, header, footer", {
+            y: -100,
+            opacity: 0,
+            duration: 1,
+            ease: "power2.inOut",
+            onComplete: () => {
+                // Pass the platform as a query parameter so the calendar knows the context
+                window.location.href = "/calendar?platform=" + platform; 
+            }
+        });
+
+        gsap.to(".shape", {
+            y: -500,
+            opacity: 0,
+            duration: 1.2,
+            stagger: 0.1
+        });
+    }
+</script>
+
+</body>
+</html>

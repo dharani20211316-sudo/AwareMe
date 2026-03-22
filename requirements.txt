@@ -1,0 +1,17 @@
+Flask
+Werkzeug
+beautifulsoup4
+groq
+huggingface-hub
+langchain
+langchain-community
+langchain-groq
+langchain-huggingface
+pandas
+pydub
+pymongo
+python-dotenv
+sentence-transformers
+whisper
+youtube-transcript-api
+yt-dlp

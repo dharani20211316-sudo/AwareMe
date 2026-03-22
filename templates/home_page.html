@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AwareMe - Mental Health Network</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400&family=Playfair+Display:ital,wght@0,400;0,700&display=swap');
+
+        :root {
+            --bg-dark: #0B1413; 
+            --accent-primary: #74C69D; 
+            --accent-secondary: #2D6A4F;
+            --soft-mint: #D8F3DC; 
+            --text-muted: #94A3A1;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: radial-gradient(circle at center, #0E2623 0%, var(--bg-dark) 100%);
+            color: white;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .ui-wrapper {
+            position: relative;
+            z-index: 10;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+
+        .ui-wrapper * { pointer-events: auto; }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 40px 80px;
+        }
+
+        .logo {
+            font-weight: bold;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: var(--soft-mint);
+            text-decoration: none;
+        }
+
+        nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            margin-right: 30px;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            transition: 0.5s ease;
+        }
+
+        nav a:hover { color: white; }
+
+        .enroll-btn {
+            border: 1px solid var(--accent-primary);
+            background: rgba(116, 198, 157, 0.05);
+            color: white;
+            padding: 10px 28px;
+            border-radius: 25px;
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+            font-size: 13px;
+            transition: 0.4s;
+        }
+
+        .enroll-btn:hover { background: rgba(116, 198, 157, 0.2); }
+
+        .hero {
+            text-align: center;
+            max-width: 850px;
+            margin: 0 auto;
+        }
+
+        .label {
+            letter-spacing: 10px;
+            font-size: 11px;
+            color: var(--accent-primary);
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            opacity: 0.8;
+        }
+
+        h1 {
+            font-family: 'Playfair Display', serif;
+            font-weight: 400;
+            font-size: clamp(45px, 8vw, 85px);
+            letter-spacing: 10px;
+            margin-bottom: 30px;
+            background: linear-gradient(to bottom, #fff, var(--soft-mint));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .description {
+            font-size: 17px;
+            font-weight: 300;
+            line-height: 2;
+            color: var(--text-muted);
+            margin-bottom: 50px;
+            padding: 0 60px;
+        }
+
+        .cta-btn {
+            background: var(--accent-primary);
+            color: #071211;
+            border: none;
+            padding: 22px 55px;
+            border-radius: 40px;
+            font-weight: bold;
+            cursor: pointer;
+            letter-spacing: 2px;
+            box-shadow: 0 10px 30px rgba(116, 198, 157, 0.15);
+            transition: 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .cta-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 40px rgba(116, 198, 157, 0.3);
+            background: #fff;
+        }
+
+        .footer-ui {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 40px 100px;
+        }
+
+        .side-link {
+            font-size: 11px;
+            letter-spacing: 4px;
+            color: #4A6361;
+            cursor: pointer;
+            text-decoration: none;
+            transition: 0.3s;
+        }
+
+        .side-link:hover { color: var(--soft-mint); }
+
+        .scroll-icon {
+            font-size: 20px;
+            color: var(--accent-primary);
+            animation: breathe 5s ease-in-out infinite; 
+        }
+
+        @keyframes breathe {
+            0%, 100% { transform: translateY(0); opacity: 0.2; }
+            50% { transform: translateY(-12px); opacity: 0.8; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div class="ui-wrapper">
+        <nav>
+            <a href="/home" class="logo">AwareMe</a>
+            <div>
+                <a href="/analysis">Analysis History</a>
+                <a href="/chat">Chat with AwareMe</a>
+                <a href="/learning">Library</a>
+                <button class="enroll-btn" onclick="window.location.href='/signup'">Sign Up</button>
+            </div>
+        </nav>
+
+        <section class="hero">
+            <p class="label">Space for Connection</p>
+            <h1>AwareMe</h1>
+            <p class="description">
+                A Multi-Platform Framework for Detecting Cognitive Distortions in Social Media Using NLP and Deep Learning
+            </p>
+            <button class="cta-btn" onclick="window.location.href='/chat'">START YOUR JOURNEY</button>
+        </section>
+
+        <div class="footer-ui">
+            <a href="/learning" class="side-link">RESEARCH LIBRARY</a>
+            <div class="scroll-icon">↓</div>
+            <a href="/stories" class="side-link">STORIES</a>
+        </div>
+    </div>
+
+    <div style="height: 120vh;"></div>
+
+    <script>
+        // Three.js Scene Setup (Consistent with previous version)
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const geometry = new THREE.IcosahedronGeometry(2, 15);
+        
+        const pointsMaterial = new THREE.PointsMaterial({
+            color: 0xD8F3DC,
+            size: 0.01,
+            transparent: true,
+            opacity: 0.5
+        });
+        const networkNodes = new THREE.Points(geometry, pointsMaterial);
+        scene.add(networkNodes);
+
+        const wireframeMaterial = new THREE.MeshBasicMaterial({
+            color: 0x74C69D,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.06
+        });
+        const networkLines = new THREE.Mesh(geometry, wireframeMaterial);
+        scene.add(networkLines);
+
+        const innerGeo = new THREE.SphereGeometry(1.9, 32, 32);
+        const innerMat = new THREE.MeshPhongMaterial({
+            color: 0x2D6A4F,
+            transparent: true,
+            opacity: 0.08,
+            shininess: 30
+        });
+        const innerSphere = new THREE.Mesh(innerGeo, innerMat);
+        scene.add(innerSphere);
+
+        const light = new THREE.PointLight(0x74C69D, 1, 100);
+        light.position.set(10, 10, 10);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x111111));
+
+        camera.position.z = 5;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            networkNodes.rotation.y += 0.0004;
+            networkNodes.rotation.x += 0.0002;
+            networkLines.rotation.y += 0.0004;
+            networkLines.rotation.x += 0.0002;
+            
+            const time = Date.now() * 0.0006; 
+            networkNodes.scale.set(
+                1 + Math.sin(time) * 0.015,
+                1 + Math.sin(time) * 0.015,
+                1 + Math.sin(time) * 0.015
+            );
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // GSAP Animations
+        gsap.from("h1", { opacity: 0, scale: 0.98, duration: 3, ease: "power1.out" });
+        gsap.from(".label", { opacity: 0, letterSpacing: "15px", duration: 3 });
+        gsap.from(".description", { opacity: 0, y: 15, duration: 2.5, delay: 1 });
+        gsap.from(".cta-btn", { opacity: 0, y: 10, duration: 2, delay: 1.8 });
+
+        // Scroll Logic: Redirects to Flash Cards (as per your current flow)
+        let hasScrolled = false;
+        window.addEventListener("scroll", () => {
+            if (window.scrollY > 150 && !hasScrolled) {
+                hasScrolled = true;
+                gsap.to("body", {
+                    opacity: 0,
+                    duration: 1.5,
+                    onComplete: () => {
+                        window.location.href = "/flash_cards";
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AwareMe Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+</head>
+<body>
+    <div class="container">
+        <div class="shape silver"></div>
+        <div class="shape forest"></div>
+        <div class="shape champagne"></div>
+        <div class="shape slate"></div>
+
+        <div class="box">
+            <form id="loginForm" autocomplete="off">
+                <h2>Sign in</h2>
+
+                <div class="inputBox">
+                    <input type="text" id="username" required>
+                    <span>Username</span>
+                    <i></i>
+                </div>
+
+                <div class="inputBox">
+                    <input type="password" id="password" required>
+                    <span>Password</span>
+                    <i></i>
+                </div>
+
+                <div class="links">
+                    <a href="#">Forgot Password</a>
+                    <a href="/signup">Signup</a>
+                </div>
+
+                <input type="submit" value="Login">
+
+                <p id="errorMessage" style="color:red; margin-top:10px;"></p>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+            const errorMessage = document.getElementById("errorMessage");
+
+            errorMessage.textContent = "";
+
+            try {
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        password: password
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    // Smooth fade-out
+                    document.querySelector('.container').style.opacity = '0';
+                    document.querySelector('.container').style.transition = '0.5s';
+
+                    setTimeout(() => {
+                        window.location.href = '/home';
+                    }, 500);
+                } else {
+                    errorMessage.textContent = result.error || "Login failed";
+                }
+
+            } catch (error) {
+                errorMessage.textContent = "Server error. Please try again.";
+                console.error(error);
+            }
+        });
+    </script>
+</body>
+</html>

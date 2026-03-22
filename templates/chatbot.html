@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AwareMe - Cognitive Assistant</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400&family=Playfair+Display:ital,wght@0,400;0,700&display=swap');
+
+        :root {
+            --bg-dark: #0B1413; 
+            --accent-primary: #74C69D; 
+            --accent-secondary: #2D6A4F;
+            --soft-mint: #D8F3DC; 
+            --text-muted: #94A3A1;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(116, 198, 157, 0.1);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background: var(--bg-dark);
+            font-family: 'Inter', sans-serif;
+            color: white;
+            overflow: hidden;
+        }
+
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .chat-layout {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+        }
+
+        .logo {
+            font-weight: bold;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: var(--soft-mint);
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        /* Chat Container */
+        .chat-container {
+            flex: 1;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .messages-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Message Bubbles */
+        .message {
+            max-width: 80%;
+            padding: 16px 20px;
+            border-radius: 18px;
+            font-size: 15px;
+            line-height: 1.6;
+            animation: fadeIn 0.4s ease-out;
+            white-space: pre-wrap; /* Preserves AI formatting */
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .ai-msg {
+            background: rgba(45, 106, 79, 0.2);
+            color: var(--soft-mint);
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+            border: 1px solid rgba(116, 198, 157, 0.1);
+        }
+
+        .user-msg {
+            background: var(--accent-primary);
+            color: #071211;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+
+        /* Distortion Tag */
+        .distortion-alert {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            color: #ffb3b3;
+            display: block;
+        }
+
+        /* Input Area */
+        .input-wrapper {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        input {
+            flex: 1;
+            background: transparent;
+            border: 1px solid var(--glass-border);
+            border-radius: 30px;
+            padding: 15px 25px;
+            color: white;
+            outline: none;
+            font-family: 'Inter', sans-serif;
+            transition: 0.3s;
+        }
+
+        input:focus {
+            border-color: var(--accent-primary);
+            background: rgba(255,255,255,0.05);
+        }
+
+        .send-btn {
+            background: var(--accent-primary);
+            border: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.3s;
+        }
+
+        .send-btn:hover {
+            transform: scale(1.05);
+            background: #fff;
+        }
+
+        .send-btn:disabled {
+            background: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        /* Scrollbar */
+        .messages-area::-webkit-scrollbar { width: 4px; }
+        .messages-area::-webkit-scrollbar-thumb { background: var(--accent-secondary); border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div class="chat-layout">
+        <header>
+            <a href="/home" class="logo">AwareMe</a>
+            <div style="font-size: 11px; color: var(--accent-primary); letter-spacing: 2px;">NEURAL ANALYSIS ACTIVE</div>
+        </header>
+
+        <div class="chat-container">
+            <div class="messages-area" id="chatBox">
+                <div class="message ai-msg">
+                    Hello. This is a safe space. Feel free to share what's on your mind, and I'll help you identify any patterns in your thinking.
+                </div>
+            </div>
+
+            <div class="input-wrapper">
+                <input type="text" id="userInput" placeholder="Type your thoughts here..." autocomplete="off">
+                <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Background Animation (Three.js) ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const geometry = new THREE.IcosahedronGeometry(2, 15);
+        const pointsMaterial = new THREE.PointsMaterial({ color: 0xD8F3DC, size: 0.01, transparent: true, opacity: 0.3 });
+        const networkNodes = new THREE.Points(geometry, pointsMaterial);
+        scene.add(networkNodes);
+
+        camera.position.z = 5;
+
+        function animateBackground() {
+            requestAnimationFrame(animateBackground);
+            networkNodes.rotation.y += 0.0003;
+            renderer.render(scene, camera);
+        }
+        animateBackground();
+
+        // --- Chat Logic (Connecting to Flask) ---
+        const chatBox = document.getElementById('chatBox');
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            // 1. UI: Append User Message & Disable input
+            appendMessage(text, 'user-msg');
+            userInput.value = '';
+            userInput.disabled = true;
+            sendBtn.disabled = true;
+
+            try {
+                // 2. Fetch: Send data to Flask backend
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message: text })
+                });
+
+                if (!response.ok) throw new Error('Network response was not ok');
+
+                const data = await response.json();
+
+                // 3. UI: Append AI Response
+                // We use data.reply from our Flask route and data.label for the analysis tag
+                appendMessage(data.reply, 'ai-msg', data.label || "Cognitive Analysis");
+
+            } catch (error) {
+                console.error("Error:", error);
+                appendMessage("I'm sorry, I'm having trouble connecting to my analysis engine. Please try again in a moment.", 'ai-msg', "System Error");
+            } finally {
+                // Re-enable input
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                userInput.focus();
+            }
+        }
+
+        function appendMessage(text, className, label = null) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${className}`;
+            
+            if (label) {
+                const labelSpan = document.createElement('span');
+                labelSpan.className = 'distortion-alert';
+                labelSpan.innerText = label;
+                msgDiv.appendChild(labelSpan);
+            }
+
+            const textSpan = document.createElement('span');
+            textSpan.innerText = text;
+            msgDiv.appendChild(textSpan);
+            
+            chatBox.appendChild(msgDiv);
+            
+            // Auto-scroll to bottom
+            chatBox.scrollTo({
+                top: chatBox.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
+
+        userInput.addEventListener("keypress", (e) => { 
+            if (e.key === "Enter" && !userInput.disabled) sendMessage(); 
+        });
+
+        // Handle window resize for Three.js
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

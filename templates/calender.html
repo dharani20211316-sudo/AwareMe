@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AwareMe - Analysis Calendar</title>
+<style>
+:root {
+    --bg-dark: #070B0B; 
+    --accent-primary: #74C69D; 
+    --accent-secondary: #2D6A4F;
+    --soft-mint: #D8F3DC; 
+    --text-muted: #94A3A1;
+    --color-forest: #2D6A4F;
+    --color-mint: #74C69D;
+    --color-slate: #4A5D5C;
+    --color-silver: #A8B5B2;
+}
+
+body {
+    background-color: var(--bg-dark);
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    overflow: hidden;
+    position: relative;
+    color: white;
+    transition: transform 0.8s cubic-bezier(0.7, 0, 0.3, 1), opacity 0.8s ease;
+}
+
+body.scroll-up-effect {
+    transform: translateY(-100vh);
+    opacity: 0;
+}
+
+.sphere {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(50px);
+    z-index: 1;
+    opacity: 0.4;
+    animation: move 25s infinite alternate ease-in-out;
+}
+
+.s1 { width: 180px; height: 180px; background: var(--color-forest); top: 5%; left: 10%; animation-duration: 20s; }
+.s2 { width: 250px; height: 250px; background: var(--color-mint); bottom: 10%; right: 5%; animation-duration: 28s; animation-delay: -2s; }
+.s3 { width: 120px; height: 120px; background: var(--color-silver); top: 40%; left: -2%; animation-duration: 18s; }
+.s4 { width: 200px; height: 200px; background: var(--color-slate); top: 15%; right: 15%; animation-duration: 35s; }
+.s5 { width: 150px; height: 150px; background: var(--color-forest); bottom: 5%; left: 25%; animation-duration: 22s; }
+
+@keyframes move {
+    0% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(80px, 100px) scale(1.1); }
+    100% { transform: translate(-30px, 50px) scale(0.95); }
+}
+
+.glass-plate {
+    width: 380px;
+    background: rgba(11, 20, 19, 0.8);
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    border-radius: 40px;
+    padding: 35px;
+    position: relative;
+    z-index: 10;
+    border: 1px solid rgba(116, 198, 157, 0.2);
+    box-shadow: 0 40px 80px rgba(0, 0, 0, 0.6);
+}
+
+.context-tag {
+    text-align: center;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--accent-primary);
+    margin-bottom: 20px;
+    text-transform: uppercase;
+    font-weight: 900;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.month-title { font-size: 13px; font-weight: 800; letter-spacing: 3px; }
+
+.nav-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(116, 198, 157, 0.2);
+    color: var(--soft-mint);
+    padding: 6px 14px;
+    border-radius: 50px;
+    font-size: 9px;
+    cursor: pointer;
+}
+
+.grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+
+.day-name { font-size: 9px; text-align: center; color: var(--accent-primary); opacity: 0.5; font-weight: 700; }
+
+.day {
+    aspect-ratio: 1;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.day.selected {
+    background: var(--accent-primary);
+    color: var(--bg-dark);
+    font-weight: 900;
+    box-shadow: 0 0 20px rgba(116, 198, 157, 0.5);
+}
+
+.start-btn {
+    margin-top: 25px;
+    width: 100%;
+    padding: 16px;
+    border-radius: 50px;
+    border: none;
+    font-weight: 900;
+    font-size: 11px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    background: var(--accent-primary);
+    color: var(--bg-dark);
+    cursor: pointer;
+    display: none;
+}
+
+.start-btn.show { display: block; animation: fadeInUp 0.6s ease forwards; }
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+</head>
+
+<body>
+
+<div class="sphere s1"></div>
+<div class="sphere s2"></div>
+<div class="sphere s3"></div>
+<div class="sphere s4"></div>
+<div class="sphere s5"></div>
+
+<div class="glass-plate">
+    <div class="context-tag" id="platformDisplay">Initializing...</div>
+
+    <div class="header">
+        <button class="nav-btn" onclick="moveMonth(-1)">PREV</button>
+        <div class="month-title" id="monthYear"></div>
+        <button class="nav-btn" onclick="moveMonth(1)">NEXT</button>
+    </div>
+
+    <div class="grid" id="calendarGrid"></div>
+
+    <button id="startBtn" class="start-btn" onclick="startAnalysis()">Start Analyzing</button>
+</div>
+
+<script>
+    let currentMonth = new Date().getMonth();
+    let currentYear = new Date().getFullYear();
+    let selectedDateStr = null;
+
+    // CAPTURE PLATFORM FROM URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const selectedPlatform = urlParams.get('platform') || 'youtube'; // Default to youtube if none provided
+    
+    // Update UI to show what we are analyzing
+    document.getElementById('platformDisplay').innerText = `Analyzing: ${selectedPlatform}`;
+
+    function updateCalendar() {
+        const grid = document.getElementById('calendarGrid');
+        const title = document.getElementById('monthYear');
+        const startBtn = document.getElementById('startBtn');
+        
+        grid.innerHTML = '';
+        const date = new Date(currentYear, currentMonth);
+        title.innerText = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase();
+
+        ['S','M','T','W','T','F','S'].forEach(d => {
+            const div = document.createElement('div');
+            div.className = 'day-name'; div.innerText = d; grid.appendChild(div);
+        });
+
+        const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+        const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+        for (let i = 0; i < firstDay; i++) grid.appendChild(document.createElement('div'));
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const day = document.createElement('div');
+            day.className = 'day';
+            day.innerText = d;
+            day.onclick = () => {
+                document.querySelectorAll('.day').forEach(el => el.classList.remove('selected'));
+                day.classList.add('selected');
+                const m = String(currentMonth + 1).padStart(2, '0');
+                const dayNum = String(d).padStart(2, '0');
+                selectedDateStr = `${currentYear}-${m}-${dayNum}`;
+                startBtn.classList.add("show");
+            };
+            grid.appendChild(day);
+        }
+    }
+
+    function moveMonth(dir) {
+        currentMonth += dir;
+        if(currentMonth < 0) { currentMonth = 11; currentYear--; } 
+        else if(currentMonth > 11) { currentMonth = 0; currentYear++; }
+        updateCalendar();
+    }
+
+    async function startAnalysis() {
+        if (!selectedDateStr) return;
+        
+        const btn = document.getElementById('startBtn');
+        btn.innerText = "PROCESSING...";
+        btn.disabled = true;
+
+        try {
+            // Send both date AND platform to the backend
+            const response = await fetch('/api/run-analysis', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    date: selectedDateStr,
+                    platform: selectedPlatform
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.status === "success") {
+                document.body.classList.add('scroll-up-effect');
+                setTimeout(() => {
+                    // Redirect to the dashboard provided by the backend (e.g., /analysis or /chat-analysis)
+                    window.location.href = data.redirect;
+                }, 600);
+            } else {
+                alert("Analysis failed: " + data.message);
+                btn.innerText = "RETRY ANALYSIS";
+                btn.disabled = false;
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error connecting to server.");
+            btn.innerText = "RETRY ANALYSIS";
+            btn.disabled = false;
+        }
+    }
+
+    updateCalendar();
+</script>
+</body>
+</html>

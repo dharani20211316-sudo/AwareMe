@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-dark: #070B0B; 
+            --accent-primary: #74C69D; 
+            --accent-secondary: #2D6A4F;
+            --soft-mint: #D8F3DC; 
+            --text-muted: #94A3A1;
+            --glass: rgba(11, 20, 19, 0.8);
+            --glass-border: rgba(116, 198, 157, 0.2);
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            font-family: 'Inter', sans-serif;
+            color: white;
+            scroll-behavior: smooth;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* --- Background Spheres --- */
+        .sphere {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(50px);
+            z-index: -1;
+            opacity: 0.3;
+            animation: move 25s infinite alternate ease-in-out;
+        }
+        .s1 { width: 250px; height: 250px; background: var(--accent-secondary); top: 5%; left: 10%; }
+        .s2 { width: 300px; height: 300px; background: var(--accent-primary); bottom: 10%; right: 5%; }
+        
+        @keyframes move {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(50px, 80px) scale(1.1); }
+        }
+
+        .container {
+            text-align: center;
+            position: relative;
+            width: 350px;
+            margin-top: 50px;
+            margin-bottom: 50px;
+            z-index: 10;
+        }
+
+        /* SVG Connection Lines */
+        .lines-svg {
+            position: absolute;
+            top: 25px;
+            left: 0;
+            width: 100%;
+            height: 150px;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .lines-svg path {
+            stroke: var(--accent-primary);
+            stroke-dasharray: 10, 5;
+            stroke-dashoffset: 0;
+            animation: flow 1.5s linear infinite;
+            fill: none;
+            opacity: 0.4;
+        }
+
+        @keyframes flow {
+            from { stroke-dashoffset: 30; }
+            to { stroke-dashoffset: 0; }
+        }
+
+        .icons-grid {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 70px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .icon {
+            width: 50px;
+            height: 50px;
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 10px;
+            font-weight: 800;
+            color: var(--accent-primary);
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            animation: iconPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes iconPulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 5px rgba(116, 198, 157, 0.2); }
+            50% { transform: scale(1.05); box-shadow: 0 0 15px rgba(116, 198, 157, 0.4); }
+        }
+
+        .user-circle {
+            width: 80px;
+            height: 80px;
+            border: 1px solid var(--accent-primary);
+            border-radius: 50%;
+            margin: 0 auto 30px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: var(--glass);
+            position: relative;
+            z-index: 1;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .person-icon { width: 30px; height: 30px; fill: var(--accent-primary); }
+
+        .toggle-wrapper {
+            background: rgba(255, 255, 255, 0.05);
+            width: 220px;
+            height: 48px;
+            border-radius: 50px;
+            margin: 0 auto;
+            position: relative;
+            border: 1px solid var(--glass-border);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            cursor: default;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .toggle-btn {
+            width: 38px;
+            height: 38px;
+            background: var(--accent-primary);
+            border-radius: 50%;
+            position: absolute;
+            left: 5px;
+            animation: moveBackAndForth 4s ease-in-out infinite;
+            z-index: 2;
+            box-shadow: 0 0 15px var(--accent-primary);
+        }
+
+        .toggle-wrapper.completed {
+            background: var(--accent-primary);
+            cursor: pointer;
+            box-shadow: 0 0 25px rgba(116, 198, 157, 0.4);
+        }
+
+        .toggle-wrapper.completed .toggle-btn { display: none; }
+        .toggle-wrapper.completed .label-text { color: var(--bg-dark); font-weight: 900; }
+
+        .label-text {
+            width: 100%;
+            text-align: center;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 700;
+            z-index: 1;
+            color: var(--soft-mint);
+        }
+
+        @keyframes moveBackAndForth {
+            0%, 100% { transform: translateX(0); }
+            50% { transform: translateX(170px); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="sphere s1"></div>
+<div class="sphere s2"></div>
+
+<div class="container">
+    <svg class="lines-svg">
+        <path d="M45,25 Q45,80 175,100" />
+        <path d="M130,25 Q130,80 175,100" />
+        <path d="M220,25 Q220,80 175,100" />
+        <path d="M305,25 Q305,80 175,100" />
+    </svg>
+
+    <div class="icons-grid">
+        <div class="icon">YT</div>
+        <div class="icon">DATA</div>
+        <div class="icon">AI</div>
+        <div class="icon">LOG</div>
+    </div>
+
+    <div class="user-circle">
+        <svg class="person-icon" viewBox="0 0 24 24">
+            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+        </svg>
+        <span style="font-size: 9px; font-weight: 800; margin-top: 4px; color: var(--accent-primary);">ANALYZER</span>
+    </div>
+
+    <div class="toggle-wrapper" id="actionButton">
+        <div class="toggle-btn" id="sliderBall"></div>
+        <div class="label-text" id="statusText">Analyzing</div>
+    </div>
+</div>
+
+<script>
+    const actionButton = document.getElementById('actionButton');
+    const statusText = document.getElementById('statusText');
+
+    window.onload = function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const date = urlParams.get('date');
+        const run = urlParams.get('run');
+
+        if (run === 'true' && date) {
+            fetch("/api/analyze/youtube", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ selectedDate: date })
+            })
+            .then(res => {
+                if (res.ok) {
+                    actionButton.classList.add('completed');
+                    statusText.innerText = "View Report";
+                } else {
+                    statusText.innerText = "System Error";
+                }
+            })
+            .catch(err => {
+                statusText.innerText = "Connection Lost";
+            });
+        }
+    };
+
+    // Updated click requirement: Redirect to piechartnew.html and scroll
+    actionButton.addEventListener('click', function() {
+        if (this.classList.contains('completed')) {
+            // Redirects to your new page with an anchor hash for scrolling
+            window.location.href = "/piechartnew.html#report";
+        }
+    });
+</script>
+</body>
+</html>

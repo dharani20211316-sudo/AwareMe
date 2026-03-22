@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transcript Analysis | AwareMe</title>
+    <style>
+        :root {
+            --bg-color: #000000;
+            --teal-medium: #00d2ff;
+            --teal-light: #43B5AC;
+            --text-color: #DCF1F1;
+        }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Arial', sans-serif;
+            padding: 40px;
+            line-height: 1.8;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        
+        h1 { 
+            color: var(--teal-medium); 
+            border-bottom: 2px solid var(--teal-light); 
+            padding-bottom: 10px;
+            font-size: 24px;
+        }
+        
+        #transcript-box {
+            background: #111;
+            padding: 30px;
+            border-radius: 15px;
+            border: 1px solid #333;
+            white-space: pre-wrap; 
+            font-size: 18px;
+            margin-top: 20px;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        /* Highlighting Styles */
+        .highlight {
+            padding: 1px 3px;
+            border-radius: 4px;
+            color: #000 !important; 
+            font-weight: bold;
+            display: inline;
+            transition: all 0.2s ease;
+        }
+
+        .highlight:hover {
+            filter: brightness(1.2);
+            cursor: help;
+        }
+
+        /* Colors for different distortions */
+        .color-0 { background-color: #52f1ff; } /* All-or-Nothing */
+        .color-1 { background-color: #40ff5d; } /* Overgeneralization */
+        .color-2 { background-color: #FFFF00; } /* Mental Filtering */
+        .color-3 { background-color: #69F0AE; } /* Disqualifying Positive */
+        .color-4 { background-color: #ff6340; } /* Jumping to Conclusions */
+        .color-5 { background-color: #E040FB; } /* Catastrophizing */
+        .color-6 { background-color: #FF4081; } /* Emotional Reasoning */
+
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 30px;
+            background: #0a0a0a;
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #222;
+        }
+        .legend-item {
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 10px;
+            border-radius: 20px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+        }
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+        
+        .back-btn {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: var(--teal-medium);
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .back-btn:hover { color: var(--text-color); }
+
+        .loading-text {
+            color: var(--teal-light);
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/analysis" class="back-btn">← Back to Analysis</a>
+        <h1 id="display-title">Loading Transcript...</h1>
+        
+        <p style="font-size: 14px; color: var(--teal-light); margin-bottom: 10px;">Detected Cognitive Distortions:</p>
+        <div class="legend" id="legend-box">
+            <span class="loading-text">Scanning for distortions...</span>
+        </div>
+        
+        <div id="transcript-box">Connecting to database and processing highlights...</div>
+    </div>
+
+    <script>
+        const colorClasses = ["color-0", "color-1", "color-2", "color-3", "color-4", "color-5", "color-6"];
+
+        async function init() {
+            const params = new URLSearchParams(window.location.search);
+            const title = params.get('title');
+            
+            if (!title) {
+                document.getElementById('transcript-box').innerText = "No video title provided.";
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/get-transcript?title=${encodeURIComponent(title)}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    document.getElementById('transcript-box').innerText = "Error: " + data.error;
+                    document.getElementById('display-title').innerText = "Video Not Found";
+                    return;
+                }
+
+                document.getElementById('display-title').innerText = data.video_title;
+                
+                let transcriptText = data.transcript || "";
+                const modelOutput = data.model_output || {};
+                const legendBox = document.getElementById('legend-box');
+                legendBox.innerHTML = ''; 
+
+                // Process Highlighting with Fuzzy Matching
+                Object.keys(modelOutput).forEach((category, index) => {
+                    const phrases = modelOutput[category];
+                    const colorClass = colorClasses[index % colorClasses.length];
+
+                    if (phrases && phrases.length > 0) {
+                        // Add distortion category to legend
+                        legendBox.innerHTML += `
+                            <div class="legend-item">
+                                <div class="dot ${colorClass}"></div>
+                                <span>${category} (${phrases.length})</span>
+                            </div>`;
+
+                        phrases.forEach(phrase => {
+                            let cleanPhrase = phrase.trim();
+                            if (cleanPhrase.length > 2) { 
+                                // 1. Escape Regex special chars
+                                let escaped = cleanPhrase.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                                
+                                // 2. Fuzzy spacing: Allow the phrase to match even if there are 
+                                // newlines or extra spaces in the transcript
+                                let fuzzyPattern = escaped.replace(/\s+/g, '[\\s\\n\\r]+');
+                                
+                                // 3. Case-insensitive Global Regex
+                                const regex = new RegExp(`(${fuzzyPattern})`, "gi");
+                                
+                                // 4. Apply highlighting
+                                transcriptText = transcriptText.replace(regex, `<span class="highlight ${colorClass}" title="${category}">$1</span>`);
+                            }
+                        });
+                    }
+                });
+
+                if (transcriptText.trim() === "") {
+                    document.getElementById('transcript-box').innerText = "The transcript for this video is empty.";
+                } else {
+                    document.getElementById('transcript-box').innerHTML = transcriptText;
+                }
+
+            } catch (err) {
+                console.error("Highlighting Engine Error:", err);
+                document.getElementById('transcript-box').innerText = "Critical error loading transcript.";
+            }
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
