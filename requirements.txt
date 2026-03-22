@@ -2,6 +2,7 @@ Flask
 Werkzeug
 beautifulsoup4
 groq
+gunicorn
 huggingface-hub
 langchain
 langchain-community
