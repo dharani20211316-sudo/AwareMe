@@ -30,7 +30,7 @@ except ImportError:
 
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-MONGO_URI = os.getenv("MONGO_URI")
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb://127.0.0.1:27017/")
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
