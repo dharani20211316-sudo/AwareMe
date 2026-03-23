@@ -1,6 +1,6 @@
 import os
 import csv
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from datetime import datetime
 from pymongo import MongoClient
 from urllib.parse import unquote
@@ -10,27 +10,26 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
 # ------------------------------
 # Import Analyzers
 # ------------------------------
 from youtube_analyzer import analyze_youtube_data
 
-# Ensure chat_history_analyzer.py has the function 'process_chat_data' 
-# that accepts a date string as an argument
 try:
     from chat_history_analyzer import process_chat_data 
 except ImportError:
     process_chat_data = None
 
-# Import RAG class
 try:
     from LearnMore import MentalHealthLibrary
 except ImportError:
     MentalHealthLibrary = None
 
-FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
+# Environment Variables
+FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "fallback-secret-key-123")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-MONGO_URI = os.environ.get("MONGO_URI", "mongodb://127.0.0.1:27017/")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://127.0.0.1:27017/")
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
@@ -38,8 +37,9 @@ app.secret_key = FLASK_SECRET_KEY
 groq_client = Groq(api_key=GROQ_API_KEY)
 CSV_FILE = "chat_history.csv"
 
+# Initialize Mental Health Library with safety check
 try:
-    if MentalHealthLibrary:
+    if MentalHealthLibrary and GROQ_API_KEY:
         mental_health_lib = MentalHealthLibrary(groq_api_key=GROQ_API_KEY)
     else:
         mental_health_lib = None
@@ -54,9 +54,10 @@ if not os.path.exists(CSV_FILE):
         writer.writerow(["Timestamp", "Mode", "User Input", "AI Response"])
 
 # ------------------------------
-# MongoDB Setup
+# MongoDB Setup (Cloud Optimized)
 # ------------------------------
-mongo_client = MongoClient(MONGO_URI)
+# Added serverSelectionTimeoutMS to prevent long hangs on Render
+mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 history_db = mongo_client["historyDB"]
 youtube_collection = history_db["youtube"]
 chat_collection = history_db["personal_chats"]
@@ -67,13 +68,18 @@ users_collection = auth_db["users"]
 # Navigation Routes
 # ------------------------------
 @app.route("/")
-def login_page(): return render_template("login.html")
+def login_page(): 
+    return render_template("login.html")
 
 @app.route("/signup")
-def signup_page(): return render_template("signup.html")
+def signup_page(): 
+    return render_template("signup.html")
 
 @app.route("/home")
-def home(): return render_template("home_page.html")
+def home(): 
+    if "user" not in session:
+        return redirect(url_for("login_page"))
+    return render_template("home_page.html")
 
 @app.route("/flash_cards")
 def flash_cards(): return render_template("flash_cards.html")
@@ -97,66 +103,76 @@ def learning_page():
     return render_template("learn_more.html", pdfs=pdfs)
 
 # ------------------------------
-# Unified Analysis Engine (The Traffic Controller)
+# Authentication
+# ------------------------------
+@app.route("/register", methods=["POST"])
+def register():
+    try:
+        data = request.get_json()
+        username, password = data.get("username"), data.get("password")
+        
+        if users_collection.find_one({"username": username}): 
+            return jsonify({"error": "User already exists"}), 400
+            
+        users_collection.insert_one({
+            "username": username, 
+            "password": generate_password_hash(password), 
+            "created_at": datetime.utcnow()
+        })
+        return jsonify({"message": "User registered"}), 201
+    except Exception as e:
+        return jsonify({"error": f"Database error: {str(e)}"}), 500
+
+@app.route("/login", methods=["POST"])
+def login():
+    try:
+        data = request.get_json()
+        user = users_collection.find_one({"username": data.get("username")})
+        
+        if user and check_password_hash(user["password"], data.get("password")):
+            session["user"] = user["username"]  # Create the session
+            return jsonify({"message": "Login successful"}), 200
+            
+        return jsonify({"error": "Invalid credentials"}), 401
+    except Exception as e:
+        return jsonify({"error": "Server error. Please try again."}), 500
+
+@app.route("/logout")
+def logout():
+    session.pop("user", None)
+    return redirect(url_for("login_page"))
+
+# ------------------------------
+# Analysis & Chat APIs
 # ------------------------------
 @app.route("/api/run-analysis", methods=["POST"])
 def run_analysis():
-    """Route triggered by the Calendar to start specific platform analysis."""
     try:
         data = request.get_json()
-        selected_date = data.get("date")      # Format: YYYY-MM-DD
-        platform = data.get("platform")        # Format: 'youtube' or 'safespace'
+        selected_date = data.get("date")
+        platform = data.get("platform")
         
         if not selected_date or not platform:
             return jsonify({"error": "Missing date or platform"}), 400
 
-        # Handle YouTube Analysis
         if platform == "youtube":
             date_obj = datetime.strptime(selected_date, "%Y-%m-%d").date()
-            result = analyze_youtube_data(date_obj)
+            analyze_youtube_data(date_obj)
             return jsonify({"status": "success", "redirect": "/analysis"})
 
-        # Handle SafeSpace (Chat History) Analysis
         elif platform == "safespace":
             if process_chat_data:
-                # Pass the date string directly to your analyzer function
                 result = process_chat_data(selected_date) 
-                
-                # Check if the analyzer returned an error (e.g., no logs for that date)
                 if isinstance(result, dict) and result.get("status") == "error":
                     return jsonify(result), 404
-                    
                 return jsonify({"status": "success", "redirect": "/chat-analysis"})
             else:
-                return jsonify({"error": "Chat analyzer script (chat_history_analyzer.py) not found or process_chat_data function missing"}), 500
+                return jsonify({"error": "Chat analyzer missing"}), 500
 
         return jsonify({"error": "Invalid platform"}), 400
-
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# ------------------------------
-# Data APIs for Dashboards
-# ------------------------------
-@app.route('/api/get-latest-chat-analysis')
-def get_latest_chat():
-    latest_doc = chat_collection.find().sort("_id", -1).limit(1)
-    result = list(latest_doc)
-    if not result:
-        return jsonify({"daily_summary": {}, "entries": []})
-    result[0].pop('_id')
-    return jsonify(result[0])
-
-@app.route("/get-chart-data")
-def get_youtube_chart_data():
-    doc = youtube_collection.find_one({}, sort=[("_id", -1)])
-    if doc and "videos" in doc:
-        return jsonify(doc["videos"]), 200
-    return jsonify({"error": "No data found"}), 404
-
-# ------------------------------
-# AI Chat & RAG APIs
-# ------------------------------
 @app.route("/api/chat", methods=["POST"])
 def chat_with_ai():
     try:
@@ -175,41 +191,8 @@ def chat_with_ai():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/learn", methods=["POST"])
-def learn_api():
-    if not mental_health_lib:
-        return jsonify({"error": "Library not initialized"}), 500
-    data = request.get_json()
-    answer = mental_health_lib.ask(data.get("question"))
-    return jsonify({"answer": answer}), 200
-
-# ------------------------------
-# Authentication
-# ------------------------------
-@app.route("/register", methods=["POST"])
-def register():
-    data = request.get_json()
-    username, password = data.get("username"), data.get("password")
-    if users_collection.find_one({"username": username}): 
-        return jsonify({"error": "User exists"}), 400
-    users_collection.insert_one({
-        "username": username, 
-        "password": generate_password_hash(password), 
-        "created_at": datetime.utcnow()
-    })
-    return jsonify({"message": "User registered"}), 201
-
-@app.route("/login", methods=["POST"])
-def login():
-    data = request.get_json()
-    user = users_collection.find_one({"username": data.get("username")})
-    if user and check_password_hash(user["password"], data.get("password")):
-        return jsonify({"message": "Login successful"}), 200
-    return jsonify({"error": "Invalid credentials"}), 401
-
 if __name__ == "__main__":
-    # Render provides a PORT environment variable. If it's not there, it uses 5000.
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
 
