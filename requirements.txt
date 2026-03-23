@@ -16,4 +16,3 @@ python-dotenv
 whisper
 youtube-transcript-api
 yt-dlp
-sentence-transformers
