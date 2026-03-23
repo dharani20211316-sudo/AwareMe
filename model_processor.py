@@ -2,13 +2,13 @@ import os
 import json
 import pandas as pd
 from huggingface_hub import InferenceClient
-from sentence_transformers import SentenceTransformer, util
+#from sentence_transformers import SentenceTransformer, util
 import re
 from pymongo import MongoClient
 from datetime import datetime
 
 # Initialize embedding model globally
-embed_model = SentenceTransformer('all-MiniLM-L6-v2')
+#embed_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # ✅ LLM Configuration
 HF_TOKEN = os.getenv("HF_TOKEN")

@@ -202,7 +202,9 @@ def login():
     return jsonify({"error": "Invalid credentials"}), 401
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Render provides a PORT environment variable. If it's not there, it uses 5000.
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
 
 
 
