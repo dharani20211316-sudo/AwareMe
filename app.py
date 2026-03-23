@@ -38,8 +38,14 @@ app.secret_key = FLASK_SECRET_KEY
 groq_client = Groq(api_key=GROQ_API_KEY)
 CSV_FILE = "chat_history.csv"
 
-if MentalHealthLibrary:
-    mental_health_lib = MentalHealthLibrary(groq_api_key=GROQ_API_KEY)
+try:
+    if MentalHealthLibrary:
+        mental_health_lib = MentalHealthLibrary(groq_api_key=GROQ_API_KEY)
+    else:
+        mental_health_lib = None
+except Exception as e:
+    print(f"⚠️ Mental Health Library failed to load: {e}")
+    mental_health_lib = None
 
 # Initialize CSV if not exists
 if not os.path.exists(CSV_FILE):
