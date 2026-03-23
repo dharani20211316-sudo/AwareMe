@@ -3,7 +3,7 @@ import warnings
 import hashlib
 from operator import itemgetter
 from langchain_groq import ChatGroq
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceInferenceAPIEmbeddings
 from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
 from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -18,8 +18,11 @@ class MentalHealthLibrary:
         self.docs_folder = docs_folder
         self.index_folder = index_folder
         
-        # Initialize embeddings once (heavy task)
-        self.embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L12-v2")
+        # Initialize embeddings via HuggingFace Inference API (no local model loading)
+        hf_token = os.getenv("HF_TOKEN")
+        if not hf_token:
+            raise ValueError("HF_TOKEN environment variable is required for embeddings")
+        self.embeddings = HuggingFaceInferenceAPIEmbeddings(api_key=hf_token, model_name="sentence-transformers/all-MiniLM-L6-v2")
         self.history = ChatMessageHistory()
         
         # 1. Setup Vector Store
