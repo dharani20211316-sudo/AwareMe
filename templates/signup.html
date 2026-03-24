@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AwareMe Signup</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="shape silver"></div>
+        <div class="shape forest"></div>
+        <div class="shape champagne"></div>
+        <div class="shape slate"></div>
+
+        <div class="box">
+            <form id="signupForm" autocomplete="off">
+                <h2>Sign up</h2>
+
+                <div class="inputBox">
+                    <input type="text" id="username" required>
+                    <span>Username (min 4 chars)</span>
+                    <i></i>
+                </div>
+
+                <div class="inputBox">
+                    <input type="password" id="password" required>
+                    <span>Password (min 8 chars)</span>
+                    <i></i>
+                </div>
+
+                <div class="links">
+                    <a href="#">Forgot Password</a>
+                    <a href="/">Login</a>
+                </div>
+
+                <input type="submit" value="Register">
+
+                <p id="errorMessage" style="color:red; margin-top:10px;"></p>
+                <p id="successMessage" style="color:green; margin-top:10px;"></p>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('signupForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+            const errorMessage = document.getElementById("errorMessage");
+            const successMessage = document.getElementById("successMessage");
+
+            errorMessage.textContent = "";
+            successMessage.textContent = "";
+
+            try {
+                const response = await fetch('/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        password: password
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    successMessage.textContent = result.message || "Registration successful!";
+                    // Redirect to login after successful registration
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 2000);
+                } else {
+                    errorMessage.textContent = result.error || "Registration failed";
+                }
+
+            } catch (error) {
+                errorMessage.textContent = "Server error. Please try again.";
+                console.error(error);
+            }
+        });
+    </script>
+</body>
+</html>

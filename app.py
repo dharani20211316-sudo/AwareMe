@@ -1,5 +1,6 @@
 import os
 import csv
+import logging
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from datetime import datetime
 from pymongo import MongoClient
@@ -30,9 +31,14 @@ except ImportError:
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "fallback-secret-key-123")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://127.0.0.1:27017/")
+MONGO_DB = os.getenv("MONGO_DB", "authentication")
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
+
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 CSV_FILE = "chat_history.csv"
@@ -47,6 +53,18 @@ except Exception as e:
     print(f"⚠️ Mental Health Library failed to load: {e}")
     mental_health_lib = None
 
+# ------------------------------
+# Audit Logging Setup
+# ------------------------------
+logging.basicConfig(
+    filename="audit.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+def log_action(username, action, ip=None):
+    logging.info(f"user:{username} action:{action} ip:{ip}")
+
 # Initialize CSV if not exists
 if not os.path.exists(CSV_FILE):
     with open(CSV_FILE, 'w', newline='', encoding='utf-8') as f:
@@ -57,12 +75,22 @@ if not os.path.exists(CSV_FILE):
 # MongoDB Setup (Cloud Optimized)
 # ------------------------------
 # Added serverSelectionTimeoutMS to prevent long hangs on Render
-mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
-history_db = mongo_client["historyDB"]
-youtube_collection = history_db["youtube"]
-chat_collection = history_db["personal_chats"]
-auth_db = mongo_client["authentication"]
-users_collection = auth_db["users"]
+mongo_client = None
+try:
+    mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    mongo_client.admin.command("ping")
+    print("✅ MongoDB ping successful")
+except Exception as e:
+    print("❌ MongoDB connection error:", e)
+
+if mongo_client:
+    history_db = mongo_client.get_database(MONGO_DB)
+    youtube_collection = history_db["youtube"]
+    chat_collection = history_db["personal_chats"]
+    auth_db = mongo_client.get_database("authentication")
+    users_collection = auth_db["users"]
+else:
+    history_db = youtube_collection = chat_collection = auth_db = users_collection = None
 
 # ------------------------------
 # Navigation Routes
@@ -107,35 +135,89 @@ def learning_page():
 # ------------------------------
 @app.route("/register", methods=["POST"])
 def register():
+    if users_collection is None:
+        return jsonify({"error": "Database unavailable"}), 503
+
     try:
         data = request.get_json()
-        username, password = data.get("username"), data.get("password")
-        
-        if users_collection.find_one({"username": username}): 
-            return jsonify({"error": "User already exists"}), 400
-            
+
+        username = data.get("username", "").strip()
+        password = data.get("password", "").strip()
+
+        # ------------------------------
+        # Input Validation (NFR6 Reliability)
+        # ------------------------------
+        if not username or not password:
+            return jsonify({"error": "Username and password required"}), 400
+
+        if len(username) < 4:
+            return jsonify({"error": "Username must be at least 4 characters"}), 400
+
+        if len(password) < 8:
+            return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+        # ------------------------------
+        # Duplicate User Check (Security)
+        # ------------------------------
+        if users_collection.find_one({"username": username}):
+            return jsonify({"error": "User already exists"}), 409
+
+        # ------------------------------
+        # Password Hashing (NFR1 Security)
+        # ------------------------------
+        hashed_password = generate_password_hash(password)
+
+        # ------------------------------
+        # Store User
+        # ------------------------------
         users_collection.insert_one({
-            "username": username, 
-            "password": generate_password_hash(password), 
-            "created_at": datetime.utcnow()
+            "username": username,
+            "password": hashed_password,
+            "created_at": datetime.utcnow(),
+            "status": "active"
         })
-        return jsonify({"message": "User registered"}), 201
+
+        # ------------------------------
+        # Audit Log (NFR1/4)
+        # ------------------------------
+        ip_address = request.remote_addr
+        log_action(username, "signup", ip_address)
+
+        return jsonify({
+            "message": "User registered successfully"
+        }), 201
+
     except Exception as e:
-        return jsonify({"error": f"Database error: {str(e)}"}), 500
+        return jsonify({
+            "error": "Registration failed",
+            "details": str(e)
+        }), 500
 
 @app.route("/login", methods=["POST"])
 def login():
+    if users_collection is None:
+        return jsonify({"error": "Database is unavailable"}), 503
+
     try:
         data = request.get_json()
-        user = users_collection.find_one({"username": data.get("username")})
-        
-        if user and check_password_hash(user["password"], data.get("password")):
-            session["user"] = user["username"]  # Create the session
+        username = data.get("username")
+        password = data.get("password")
+
+        user = users_collection.find_one({"username": username})
+
+        if user and check_password_hash(user["password"], password):
+
+            session["user"] = username
+
+            ip_address = request.remote_addr
+            log_action(username, "login", ip_address)
+
             return jsonify({"message": "Login successful"}), 200
-            
+
         return jsonify({"error": "Invalid credentials"}), 401
-    except Exception as e:
-        return jsonify({"error": "Server error. Please try again."}), 500
+
+    except Exception:
+        return jsonify({"error": "Server error"}), 500
 
 @app.route("/logout")
 def logout():
