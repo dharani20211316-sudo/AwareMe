@@ -134,7 +134,7 @@ from flask import send_from_directory
 
 @app.route('/loaderio-04ca9af75b74b38cf9ce01cf634fd042.txt')
 def loaderio_verification():
-    return send_from_directory('static', 'loaderio-04ca9af75b74b38cf9ce01cf634fd042.txt')
+    return "loaderio-04ca9af75b74b38cf9ce01cf634fd042"
 
 # ------------------------------
 # Authentication
