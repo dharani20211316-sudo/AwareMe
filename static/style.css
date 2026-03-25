@@ -186,3 +186,40 @@ input[type="submit"] {
         transform: translate(0, 0) rotate(360deg);
     }
 }
+
+/* Mobile responsiveness */
+@media (max-width: 480px) {
+    body {
+        overflow: auto; /* Allow scrolling on mobile */
+        padding: 20px; /* Add padding to prevent edge touching */
+    }
+
+    .container {
+        width: 100%;
+        max-width: 400px;
+        height: auto; /* Allow height to adjust */
+        min-height: 500px;
+    }
+
+    .box {
+        padding: 20px; /* Reduce padding on mobile */
+    }
+
+    form h2 {
+        font-size: 1.2em; /* Slightly smaller title */
+        margin-bottom: 20px;
+    }
+
+    .inputBox {
+        margin-bottom: 25px;
+    }
+
+    .links {
+        flex-direction: column; /* Stack links vertically */
+        align-items: center;
+    }
+
+    .links a {
+        margin: 5px 0;
+    }
+}
