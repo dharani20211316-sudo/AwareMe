@@ -132,7 +132,7 @@ def learning_page():
 
 @app.route('/loaderio-2e6027f3dce36d73e9640cccba104dc8.txt')
 def loaderio_verification():
-    return "loaderio-2e6027f3dce36d73e9640cccba104dc8"
+    return "loaderio-04ca9af75b74b38cf9ce01cf634fd042"
 
 # ------------------------------
 # Authentication
