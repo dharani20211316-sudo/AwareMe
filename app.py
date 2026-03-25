@@ -130,9 +130,11 @@ def learning_page():
     pdfs = [f for f in os.listdir(pdf_folder) if f.endswith('.pdf')] if os.path.exists(pdf_folder) else []
     return render_template("learn_more.html", pdfs=pdfs)
 
+from flask import send_from_directory
+
 @app.route('/loaderio-04ca9af75b74b38cf9ce01cf634fd042.txt')
 def loaderio_verification():
-    return "loaderio-04ca9af75b74b38cf9ce01cf634fd042"
+    return send_from_directory('static', 'loaderio-04ca9af75b74b38cf9ce01cf634fd042.txt')
 
 # ------------------------------
 # Authentication
