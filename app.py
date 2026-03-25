@@ -130,7 +130,7 @@ def learning_page():
     pdfs = [f for f in os.listdir(pdf_folder) if f.endswith('.pdf')] if os.path.exists(pdf_folder) else []
     return render_template("learn_more.html", pdfs=pdfs)
 
-@app.route('/loaderio-2e6027f3dce36d73e9640cccba104dc8.txt')
+@app.route('/loaderio-04ca9af75b74b38cf9ce01cf634fd042.txt')
 def loaderio_verification():
     return "loaderio-04ca9af75b74b38cf9ce01cf634fd042"
 
