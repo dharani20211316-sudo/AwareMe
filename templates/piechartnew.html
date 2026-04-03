@@ -185,6 +185,8 @@
 </head>
 <body>
 
+<a href="/home" style="position:fixed;top:20px;left:20px;z-index:9999;display:flex;align-items:center;gap:8px;padding:10px 20px;background:rgba(11,20,19,0.8);backdrop-filter:blur(15px);border:1px solid rgba(116,198,157,0.25);border-radius:50px;color:#D8F3DC;text-decoration:none;font-family:'Inter',sans-serif;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;transition:all 0.3s ease;box-shadow:0 4px 20px rgba(0,0,0,0.3);" onmouseover="this.style.background='rgba(45,106,79,0.6)';this.style.borderColor='rgba(116,198,157,0.5)';" onmouseout="this.style.background='rgba(11,20,19,0.8)';this.style.borderColor='rgba(116,198,157,0.25)';"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#74C69D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Home</a>
+
 <div class="sphere s1"></div>
 <div class="sphere s2"></div>
 
@@ -195,19 +197,82 @@
     </div>
 </div>
 
-<div class="table-container">
-    <div class="legend-title">Video Breakdown Detail</div>
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Timestamp</th>
-                <th>Video Title</th>
-                <th>Distortion Percentage</th>
-            </tr>
-        </thead>
-        <tbody id="stats-table-body">
+<!-- No distortions message (hidden by default) -->
+<div id="no-distortions-section" style="display:none;">
+    <div class="table-container" style="text-align:center; padding:60px 40px;">
+        <div style="font-size:48px; margin-bottom:20px;">🎉</div>
+        <h2 style="color:var(--accent-primary); font-size:22px; letter-spacing:2px; margin-bottom:15px;">
+            NO COGNITIVE DISTORTIONS DETECTED
+        </h2>
+        <p style="color:var(--text-muted); font-size:15px; line-height:1.8; max-width:600px; margin:0 auto;">
+            Great news! Based on our analysis, your content doesn't show signs of cognitive distortions.
+            This suggests a balanced and healthy pattern of thinking in the content you engage with.
+        </p>
+    </div>
+</div>
+
+<!-- Content Trends Section (hidden by default) -->
+<div id="trends-section" style="display:none;">
+    <div class="table-container">
+        <div class="legend-title">Content Trend Analysis</div>
+        
+        <!-- Interaction Types -->
+        <div id="trends-interactions" style="display:none; margin-bottom:35px;">
+            <h3 style="color:var(--accent-primary); font-size:13px; letter-spacing:2px; text-transform:uppercase; margin-bottom:15px;">
+                Interaction Types
+            </h3>
+            <div id="interactions-bars"></div>
+        </div>
+
+        <!-- Content Themes -->
+        <div id="trends-themes" style="display:none; margin-bottom:35px;">
+            <h3 style="color:var(--accent-primary); font-size:13px; letter-spacing:2px; text-transform:uppercase; margin-bottom:15px;">
+                Content Themes
+            </h3>
+            <div id="themes-bars"></div>
+        </div>
+
+        <!-- Sentiment -->
+        <div id="trends-sentiment" style="display:none; margin-bottom:35px;">
+            <h3 style="color:var(--accent-primary); font-size:13px; letter-spacing:2px; text-transform:uppercase; margin-bottom:15px;">
+                Sentiment Overview
+            </h3>
+            <div id="sentiment-display" style="display:flex; gap:20px; flex-wrap:wrap;"></div>
+        </div>
+
+        <!-- Activity Times -->
+        <div id="trends-activity" style="display:none; margin-bottom:35px;">
+            <h3 style="color:var(--accent-primary); font-size:13px; letter-spacing:2px; text-transform:uppercase; margin-bottom:15px;">
+                Activity Times
+            </h3>
+            <div id="activity-bars"></div>
+        </div>
+
+        <!-- Observations -->
+        <div id="trends-observations" style="display:none;">
+            <h3 style="color:var(--accent-primary); font-size:13px; letter-spacing:2px; text-transform:uppercase; margin-bottom:15px;">
+                Key Observations
+            </h3>
+            <div id="observations-list"></div>
+        </div>
+    </div>
+</div>
+
+<div id="table-section">
+    <div class="table-container">
+        <div class="legend-title">Video Breakdown Detail</div>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Video Title</th>
+                    <th>Distortion Percentage</th>
+                </tr>
+            </thead>
+            <tbody id="stats-table-body">
             </tbody>
-    </table>
+        </table>
+    </div>
 </div>
 
 <script type="module">
@@ -216,9 +281,12 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.136.0/build/three.m
 /* -----------------------------
    1️⃣ DATA FETCHING & SORTING
 ------------------------------*/
+const urlParams = new URLSearchParams(window.location.search);
+const platform = urlParams.get('platform') || 'youtube';
+
 async function fetchPieData() {
     try {
-        const response = await fetch("/api/distortion-breakdown"); 
+        const response = await fetch(`/api/distortion-breakdown?platform=${platform}`); 
         const result = await response.json();
         if (!result || result.status === "error") throw new Error();
         
@@ -226,31 +294,24 @@ async function fetchPieData() {
             .map(([label, val]) => ({ label, value: parseFloat(val) }))
             .sort((a, b) => b.value - a.value);
     } catch (err) {
-        return [
-            {label: "All-or-Nothing Thinking", value: 33.3},
-            {label: "Catastrophizing", value: 15.5},
-            {label: "Personalization", value: 8.2},
-            {label: "Mental Filtering", value: 0},
-            {label: "Emotional Reasoning", value: 0}
-        ].sort((a,b) => b.value - a.value);
+        return [];
     }
 }
 
 async function fetchTableData() {
     try {
-        const response = await fetch("/api/video-stats-table");
+        const response = await fetch(`/api/video-stats-table?platform=${platform}`);
         const data = await response.json();
         const tbody = document.getElementById('stats-table-body');
         
         data.forEach(item => {
             const row = document.createElement('tr');
-            // Encode the title for the URL parameter
             const encodedTitle = encodeURIComponent(item.video_title);
             
             row.innerHTML = `
                 <td>${item.timestamp}</td>
                 <td style="font-weight: 700;">
-                    <a href="/transcript?title=${encodedTitle}" class="video-link">
+                    <a href="/transcript?title=${encodedTitle}&platform=${platform}" class="video-link">
                         ${item.video_title}
                     </a>
                 </td>
@@ -263,11 +324,151 @@ async function fetchTableData() {
     }
 }
 
+async function fetchContentTrends() {
+    try {
+        const response = await fetch(`/api/content-trends?platform=${platform}`);
+        const data = await response.json();
+        return data;
+    } catch (err) {
+        return null;
+    }
+}
+
 /* -----------------------------
-   2️⃣ 3D SCENE SETUP
+   TREND RENDERING HELPERS
 ------------------------------*/
-fetchPieData().then((sortedData) => {
+function renderBar(label, count, maxCount, color) {
+    const pct = maxCount > 0 ? (count / maxCount) * 100 : 0;
+    return `<div style="margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+            <span style="font-size:13px; color:white; font-weight:600;">${label}</span>
+            <span style="font-size:13px; color:var(--text-muted);">${count}</span>
+        </div>
+        <div style="width:100%; height:8px; background:rgba(255,255,255,0.08); border-radius:10px; overflow:hidden;">
+            <div style="width:${pct}%; height:100%; background:${color}; border-radius:10px; transition:width 1s ease;"></div>
+        </div>
+    </div>`;
+}
+
+function renderSentimentCard(label, count, color, emoji) {
+    return `<div style="flex:1; min-width:120px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:20px; padding:20px; text-align:center;">
+        <div style="font-size:28px; margin-bottom:8px;">${emoji}</div>
+        <div style="font-size:24px; font-weight:900; color:${color};">${count}</div>
+        <div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--text-muted); margin-top:5px;">${label}</div>
+    </div>`;
+}
+
+function renderTrends(trends) {
+    if (!trends) return;
+    
+    document.getElementById('trends-section').style.display = 'block';
+
+    // Interaction types
+    if (trends.interaction_types && Object.keys(trends.interaction_types).length > 0) {
+        document.getElementById('trends-interactions').style.display = 'block';
+        const container = document.getElementById('interactions-bars');
+        const maxVal = Math.max(...Object.values(trends.interaction_types));
+        const colors = ['#00FFCC', '#A670FF', '#FF70A6', '#70D6FF', '#FFD670'];
+        let html = '';
+        Object.entries(trends.interaction_types).forEach(([label, count], i) => {
+            html += renderBar(label, count, maxVal, colors[i % colors.length]);
+        });
+        container.innerHTML = html;
+    }
+
+    // Content themes
+    if (trends.content_themes && Object.keys(trends.content_themes).length > 0) {
+        document.getElementById('trends-themes').style.display = 'block';
+        const container = document.getElementById('themes-bars');
+        const maxVal = Math.max(...Object.values(trends.content_themes));
+        const colors = ['#74C69D', '#52B788', '#40916C', '#2D6A4F', '#1B4332', '#A670FF', '#FF70A6', '#70D6FF', '#FFD670'];
+        let html = '';
+        Object.entries(trends.content_themes).forEach(([label, count], i) => {
+            html += renderBar(label, count, maxVal, colors[i % colors.length]);
+        });
+        container.innerHTML = html;
+    }
+
+    // Sentiment
+    if (trends.sentiment_distribution) {
+        document.getElementById('trends-sentiment').style.display = 'block';
+        const s = trends.sentiment_distribution;
+        const container = document.getElementById('sentiment-display');
+        let html = '';
+        html += renderSentimentCard('Positive', s.positive || 0, '#74C69D', '😊');
+        html += renderSentimentCard('Neutral', s.neutral || 0, '#70D6FF', '😐');
+        html += renderSentimentCard('Negative', s.negative || 0, '#FF70A6', '😔');
+        if (trends.avg_sentiment !== undefined) {
+            html += renderSentimentCard('Avg Score', trends.avg_sentiment, 
+                trends.avg_sentiment >= 0 ? '#74C69D' : '#FF70A6', '📊');
+        }
+        container.innerHTML = html;
+    }
+
+    // Activity times
+    if (trends.activity_times && Object.keys(trends.activity_times).length > 0) {
+        document.getElementById('trends-activity').style.display = 'block';
+        const container = document.getElementById('activity-bars');
+        const maxVal = Math.max(...Object.values(trends.activity_times));
+        const timeColors = { 
+            'morning (6-12)': '#FFD670', 
+            'afternoon (12-18)': '#FF9770', 
+            'evening (18-24)': '#A670FF', 
+            'night (0-6)': '#70D6FF' 
+        };
+        let html = '';
+        Object.entries(trends.activity_times).forEach(([label, count]) => {
+            html += renderBar(label, count, maxVal, timeColors[label] || '#74C69D');
+        });
+        container.innerHTML = html;
+    }
+
+    // Observations
+    if (trends.observations && trends.observations.length > 0) {
+        document.getElementById('trends-observations').style.display = 'block';
+        const container = document.getElementById('observations-list');
+        let html = '';
+        trends.observations.forEach((obs, i) => {
+            html += `<div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:14px; 
+                        padding:14px 18px; background:rgba(116,198,157,0.06); border-left:3px solid var(--accent-primary); 
+                        border-radius:0 12px 12px 0; opacity:0; transform:translateY(10px); 
+                        transition:all 0.5s ease ${i * 0.1}s;" class="obs-item">
+                <span style="color:var(--accent-primary); font-size:16px; flex-shrink:0;">•</span>
+                <span style="font-size:14px; color:var(--soft-mint); line-height:1.6;">${obs}</span>
+            </div>`;
+        });
+        container.innerHTML = html;
+        // Animate in
+        setTimeout(() => {
+            document.querySelectorAll('.obs-item').forEach(el => {
+                el.style.opacity = '1';
+                el.style.transform = 'translateY(0)';
+            });
+        }, 300);
+    }
+}
+
+/* -----------------------------
+   2️⃣ MAIN INITIALIZATION
+------------------------------*/
+fetchPieData().then(async (sortedData) => {
     fetchTableData();
+    const trends = await fetchContentTrends();
+
+    const activeItems = sortedData.filter(d => d.value > 0);
+    const hasDistortions = activeItems.length > 0;
+
+    // CASE 2: No distortions — show friendly message + trends only
+    if (!hasDistortions) {
+        document.getElementById('report').style.display = 'none';
+        document.getElementById('table-section').style.display = 'none';
+        document.getElementById('no-distortions-section').style.display = 'block';
+        renderTrends(trends);
+        return;
+    }
+
+    // CASE 1: Has distortions — show pie chart + table + trends
+    renderTrends(trends);
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -289,7 +490,6 @@ fetchPieData().then((sortedData) => {
 
     const palette = ['#00FFCC', '#A670FF', '#FF70A6', '#70D6FF', '#FFD670', '#FF9770', '#E9FF70'];
 
-    const activeItems = sortedData.filter(d => d.value > 0);
     const totalValue = activeItems.reduce((s, i) => s + i.value, 0);
 
     const meshes = [];

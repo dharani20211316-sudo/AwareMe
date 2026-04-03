@@ -3,7 +3,8 @@ import warnings
 import hashlib
 from operator import itemgetter
 from langchain_groq import ChatGroq
-from langchain_huggingface import HuggingFaceInferenceAPIEmbeddings
+from huggingface_hub import InferenceClient
+from langchain_core.embeddings import Embeddings
 from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
 from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -12,6 +13,25 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_community.chat_message_histories import ChatMessageHistory
 
 warnings.filterwarnings("ignore")
+
+
+class HFInferenceEmbeddings(Embeddings):
+    """Lightweight wrapper using huggingface_hub InferenceClient for embeddings."""
+    def __init__(self, api_key, model="sentence-transformers/all-MiniLM-L6-v2"):
+        self.client = InferenceClient(token=api_key)
+        self.model = model
+
+    def embed_documents(self, texts, batch_size=50):
+        all_embeddings = []
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            results = self.client.feature_extraction(batch, model=self.model)
+            all_embeddings.extend(results.tolist())
+        return all_embeddings
+
+    def embed_query(self, text):
+        return self.client.feature_extraction(text, model=self.model).tolist()
+
 
 class MentalHealthLibrary:
     def __init__(self, groq_api_key, docs_folder="my_pdfs", index_folder="faiss_index"):
@@ -22,7 +42,7 @@ class MentalHealthLibrary:
         hf_token = os.getenv("HF_TOKEN")
         if not hf_token:
             raise ValueError("HF_TOKEN environment variable is required for embeddings")
-        self.embeddings = HuggingFaceInferenceAPIEmbeddings(api_key=hf_token, model_name="sentence-transformers/all-MiniLM-L6-v2")
+        self.embeddings = HFInferenceEmbeddings(api_key=hf_token)
         self.history = ChatMessageHistory()
         
         # 1. Setup Vector Store

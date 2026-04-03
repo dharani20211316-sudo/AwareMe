@@ -25,7 +25,7 @@ body {
     align-items: center;
     font-family: 'Inter', sans-serif;
     min-height: 100vh;
-    overflow: hidden;
+    overflow-x: hidden;
     position: relative;
     color: white;
     transition: transform 0.8s cubic-bezier(0.7, 0, 0.3, 1), opacity 0.8s ease;
@@ -45,11 +45,8 @@ body.scroll-up-effect {
     animation: move 25s infinite alternate ease-in-out;
 }
 
-.s1 { width: 180px; height: 180px; background: var(--color-forest); top: 5%; left: 10%; animation-duration: 20s; }
-.s2 { width: 250px; height: 250px; background: var(--color-mint); bottom: 10%; right: 5%; animation-duration: 28s; animation-delay: -2s; }
-.s3 { width: 120px; height: 120px; background: var(--color-silver); top: 40%; left: -2%; animation-duration: 18s; }
-.s4 { width: 200px; height: 200px; background: var(--color-slate); top: 15%; right: 15%; animation-duration: 35s; }
-.s5 { width: 150px; height: 150px; background: var(--color-forest); bottom: 5%; left: 25%; animation-duration: 22s; }
+.s1 { width: 180px; height: 180px; background: var(--color-forest); top: 5%; left: 10%; }
+.s2 { width: 250px; height: 250px; background: var(--color-mint); bottom: 10%; right: 5%; }
 
 @keyframes move {
     0% { transform: translate(0, 0) scale(1); }
@@ -100,7 +97,6 @@ body.scroll-up-effect {
 }
 
 .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
-
 .day-name { font-size: 9px; text-align: center; color: var(--accent-primary); opacity: 0.5; font-weight: 700; }
 
 .day {
@@ -123,8 +119,101 @@ body.scroll-up-effect {
     box-shadow: 0 0 20px rgba(116, 198, 157, 0.5);
 }
 
-.start-btn {
+.day.has-data {
+    color: var(--soft-mint);
+    background: rgba(116, 198, 157, 0.15);
+    font-weight: 700;
+}
+
+.day.has-data:hover {
+    background: rgba(116, 198, 157, 0.3);
+}
+
+.day.no-data {
+    color: rgba(148, 163, 161, 0.3);
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-100px);
+    background: rgba(220, 53, 69, 0.9);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 11px;
+    letter-spacing: 1px;
+    z-index: 9999;
+    opacity: 0;
+    transition: all 0.4s ease;
+    backdrop-filter: blur(10px);
+}
+
+.toast.info {
+    background: rgba(116, 198, 157, 0.9);
+    color: var(--bg-dark);
+}
+
+.toast.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+}
+
+.scanning-indicator {
+    text-align: center;
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--accent-primary);
+    margin-top: 10px;
+    display: none;
+    animation: pulse 1.5s infinite;
+}
+
+.scanning-indicator.active { display: block; }
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+
+.upload-section {
     margin-top: 25px;
+    padding: 20px;
+    background: rgba(116, 198, 157, 0.05);
+    border: 1px dashed rgba(116, 198, 157, 0.3);
+    border-radius: 20px;
+    text-align: center;
+    display: none;
+}
+
+.upload-section.active { display: block; }
+
+.file-label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--soft-mint);
+    cursor: pointer;
+    border: 1px solid rgba(116, 198, 157, 0.4);
+    padding: 8px;
+    border-radius: 10px;
+    transition: 0.3s;
+}
+
+.file-label:hover { background: rgba(116, 198, 157, 0.1); }
+
+#fileNameDisplay {
+    margin-top: 10px;
+    font-size: 9px;
+    color: var(--accent-primary);
+    word-break: break-all;
+}
+
+.start-btn {
+    margin-top: 20px;
     width: 100%;
     padding: 16px;
     border-radius: 50px;
@@ -137,9 +226,17 @@ body.scroll-up-effect {
     color: var(--bg-dark);
     cursor: pointer;
     display: none;
+    transition: opacity 0.3s ease;
 }
 
 .start-btn.show { display: block; animation: fadeInUp 0.6s ease forwards; }
+
+/* Disabled state styling */
+.start-btn:disabled {
+    background: #4A5D5C;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
 
 @keyframes fadeInUp {
     from { opacity: 0; transform: translateY(20px); }
@@ -150,11 +247,11 @@ body.scroll-up-effect {
 
 <body>
 
+<a href="/home" style="position:fixed;top:20px;left:20px;z-index:9999;display:flex;align-items:center;gap:8px;padding:10px 20px;background:rgba(11,20,19,0.8);backdrop-filter:blur(15px);border:1px solid rgba(116,198,157,0.25);border-radius:50px;color:#D8F3DC;text-decoration:none;font-family:'Inter',sans-serif;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;transition:all 0.3s ease;box-shadow:0 4px 20px rgba(0,0,0,0.3);" onmouseover="this.style.background='rgba(45,106,79,0.6)';this.style.borderColor='rgba(116,198,157,0.5)';" onmouseout="this.style.background='rgba(11,20,19,0.8)';this.style.borderColor='rgba(116,198,157,0.25)';"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#74C69D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Home</a>
+
 <div class="sphere s1"></div>
 <div class="sphere s2"></div>
-<div class="sphere s3"></div>
-<div class="sphere s4"></div>
-<div class="sphere s5"></div>
+<div id="toast" class="toast"></div>
 
 <div class="glass-plate">
     <div class="context-tag" id="platformDisplay">Initializing...</div>
@@ -167,6 +264,15 @@ body.scroll-up-effect {
 
     <div class="grid" id="calendarGrid"></div>
 
+    <div id="scanningIndicator" class="scanning-indicator">SCANNING FILE FOR AVAILABLE DATES...</div>
+
+    <div id="uploadContainer" class="upload-section">
+        <div style="font-size: 9px; margin-bottom: 10px; color: var(--text-muted); letter-spacing: 1px;">ATTACH PLATFORM DATA (.ZIP PREFERRED)</div>
+        <label for="fileInput" class="file-label">BROWSE FILES</label>
+        <input type="file" id="fileInput" style="display:none;" accept=".html,.zip" onchange="updateFileName()">
+        <div id="fileNameDisplay"></div>
+    </div>
+
     <button id="startBtn" class="start-btn" onclick="startAnalysis()">Start Analyzing</button>
 </div>
 
@@ -174,18 +280,135 @@ body.scroll-up-effect {
     let currentMonth = new Date().getMonth();
     let currentYear = new Date().getFullYear();
     let selectedDateStr = null;
+    let availableDates = new Set(); // dates that have data
+    let datesLoaded = false;        // whether we've scanned the file
 
-    // CAPTURE PLATFORM FROM URL
     const urlParams = new URLSearchParams(window.location.search);
-    const selectedPlatform = urlParams.get('platform') || 'youtube'; // Default to youtube if none provided
+    const selectedPlatform = urlParams.get('platform') || 'youtube'; 
     
-    // Update UI to show what we are analyzing
     document.getElementById('platformDisplay').innerText = `Analyzing: ${selectedPlatform}`;
+
+    // Show file upload section only for social media platforms (not for safespace)
+    const platformsWithFileUpload = ['youtube', 'instagram', 'reddit', 'twitter'];
+    if (platformsWithFileUpload.includes(selectedPlatform)) {
+        document.getElementById('uploadContainer').classList.add('active');
+    }
+
+    // Toast notification
+    function showToast(message, type = 'error', duration = 3000) {
+        const toast = document.getElementById('toast');
+        toast.innerText = message;
+        toast.className = 'toast' + (type === 'info' ? ' info' : '');
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), duration);
+    }
+
+    // Fetch available dates from server after file upload
+    async function fetchAvailableDates(file) {
+        const indicator = document.getElementById('scanningIndicator');
+        indicator.classList.add('active');
+
+        const formData = new FormData();
+        formData.append('platform', selectedPlatform);
+        formData.append('file', file);
+
+        try {
+            const response = await fetch('/api/available-dates', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (data.status === 'success' && data.dates) {
+                availableDates = new Set(data.dates);
+                datesLoaded = true;
+                updateCalendar();
+                showToast(`Found data for ${data.total} dates`, 'info', 3000);
+            } else {
+                showToast(data.error || 'Could not read dates from file');
+            }
+        } catch (e) {
+            console.error('Error fetching dates:', e);
+            showToast('Error scanning file for dates');
+        } finally {
+            indicator.classList.remove('active');
+        }
+    }
+
+    // For safespace, load dates immediately (no file needed)
+    async function fetchSafespaceAvailableDates() {
+        const indicator = document.getElementById('scanningIndicator');
+        indicator.classList.add('active');
+
+        const formData = new FormData();
+        formData.append('platform', 'safespace');
+
+        try {
+            const response = await fetch('/api/available-dates', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (data.status === 'success' && data.dates) {
+                availableDates = new Set(data.dates);
+                datesLoaded = true;
+                updateCalendar();
+                if (data.total > 0) {
+                    showToast(`Found data for ${data.total} dates`, 'info', 3000);
+                } else {
+                    showToast('No chat history data found yet', 'error', 4000);
+                }
+            }
+        } catch (e) {
+            console.error('Error fetching safespace dates:', e);
+        } finally {
+            indicator.classList.remove('active');
+        }
+    }
+
+    // Validation logic
+    function validateRequirements() {
+        const startBtn = document.getElementById('startBtn');
+        const fileInput = document.getElementById('fileInput');
+        
+        const dateSelected = selectedDateStr !== null;
+        const fileAttached = fileInput.files.length > 0;
+
+        if (dateSelected) {
+            startBtn.classList.add("show");
+        }
+
+        if (selectedPlatform === 'safespace') {
+            startBtn.disabled = !dateSelected;
+        } else {
+            startBtn.disabled = !(dateSelected && fileAttached);
+            
+            if (dateSelected && !fileAttached) {
+                startBtn.innerText = "Upload File to Start";
+            } else {
+                startBtn.innerText = "Start Analyzing";
+            }
+        }
+    }
+
+    function updateFileName() {
+        const input = document.getElementById('fileInput');
+        const display = document.getElementById('fileNameDisplay');
+        display.innerText = input.files.length > 0 ? `Ready: ${input.files[0].name}` : "";
+        validateRequirements();
+
+        // Auto-scan file for available dates
+        if (input.files.length > 0) {
+            selectedDateStr = null; // reset date selection when new file uploaded
+            document.querySelectorAll('.day').forEach(el => el.classList.remove('selected'));
+            fetchAvailableDates(input.files[0]);
+        }
+    }
 
     function updateCalendar() {
         const grid = document.getElementById('calendarGrid');
         const title = document.getElementById('monthYear');
-        const startBtn = document.getElementById('startBtn');
         
         grid.innerHTML = '';
         const date = new Date(currentYear, currentMonth);
@@ -203,16 +426,40 @@ body.scroll-up-effect {
 
         for (let d = 1; d <= daysInMonth; d++) {
             const day = document.createElement('div');
+            const m = String(currentMonth + 1).padStart(2, '0');
+            const dayNum = String(d).padStart(2, '0');
+            const dateStr = `${currentYear}-${m}-${dayNum}`;
+
             day.className = 'day';
             day.innerText = d;
-            day.onclick = () => {
-                document.querySelectorAll('.day').forEach(el => el.classList.remove('selected'));
+
+            if (datesLoaded) {
+                if (availableDates.has(dateStr)) {
+                    day.classList.add('has-data');
+                    day.onclick = () => {
+                        document.querySelectorAll('.day').forEach(el => el.classList.remove('selected'));
+                        day.classList.add('selected');
+                        selectedDateStr = dateStr;
+                        validateRequirements();
+                    };
+                } else {
+                    day.classList.add('no-data');
+                }
+            } else {
+                // Dates not loaded yet — allow clicking any date
+                day.onclick = () => {
+                    document.querySelectorAll('.day').forEach(el => el.classList.remove('selected'));
+                    day.classList.add('selected');
+                    selectedDateStr = dateStr;
+                    validateRequirements();
+                };
+            }
+
+            // Restore selection
+            if (dateStr === selectedDateStr) {
                 day.classList.add('selected');
-                const m = String(currentMonth + 1).padStart(2, '0');
-                const dayNum = String(d).padStart(2, '0');
-                selectedDateStr = `${currentYear}-${m}-${dayNum}`;
-                startBtn.classList.add("show");
-            };
+            }
+
             grid.appendChild(day);
         }
     }
@@ -225,21 +472,38 @@ body.scroll-up-effect {
     }
 
     async function startAnalysis() {
-        if (!selectedDateStr) return;
+        if (document.getElementById('startBtn').disabled) return;
+
+        // Validate a date was actually selected
+        if (!selectedDateStr || selectedDateStr === 'null') {
+            showToast('Please select a date first.');
+            return;
+        }
+
+        // Double-check date has data (if dates were loaded)
+        if (datesLoaded && !availableDates.has(selectedDateStr)) {
+            showToast(`No data available for ${selectedDateStr}. Please pick a highlighted date.`);
+            return;
+        }
         
         const btn = document.getElementById('startBtn');
+        const fileInput = document.getElementById('fileInput');
+
+        const formData = new FormData();
+        formData.append('date', selectedDateStr);
+        formData.append('platform', selectedPlatform);
+        
+        if (selectedPlatform !== 'safespace' && fileInput.files[0]) {
+            formData.append('file', fileInput.files[0]);
+        }
+
         btn.innerText = "PROCESSING...";
         btn.disabled = true;
 
         try {
-            // Send both date AND platform to the backend
             const response = await fetch('/api/run-analysis', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    date: selectedDateStr,
-                    platform: selectedPlatform
-                })
+                body: formData 
             });
 
             const data = await response.json();
@@ -247,23 +511,29 @@ body.scroll-up-effect {
             if (data.status === "success") {
                 document.body.classList.add('scroll-up-effect');
                 setTimeout(() => {
-                    // Redirect to the dashboard provided by the backend (e.g., /analysis or /chat-analysis)
                     window.location.href = data.redirect;
                 }, 600);
             } else {
-                alert("Analysis failed: " + data.message);
+                showToast(data.message || data.error || "Analysis failed");
                 btn.innerText = "RETRY ANALYSIS";
                 btn.disabled = false;
+                validateRequirements();
             }
         } catch (e) {
             console.error(e);
-            alert("Error connecting to server.");
+            showToast("Error connecting to server.");
             btn.innerText = "RETRY ANALYSIS";
             btn.disabled = false;
+            validateRequirements();
         }
     }
 
     updateCalendar();
+
+    // Auto-load dates for safespace (no file needed)
+    if (selectedPlatform === 'safespace') {
+        fetchSafespaceAvailableDates();
+    }
 </script>
 </body>
 </html>

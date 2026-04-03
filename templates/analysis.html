@@ -131,7 +131,7 @@
 
         .toggle-wrapper {
             background: rgba(255, 255, 255, 0.05);
-            width: 220px;
+            width: 300px; 
             height: 48px;
             border-radius: 50px;
             margin: 0 auto;
@@ -162,27 +162,36 @@
             box-shadow: 0 0 25px rgba(116, 198, 157, 0.4);
         }
 
+        .toggle-wrapper.completed:hover {
+            transform: scale(1.02);
+            filter: brightness(1.1);
+        }
+
         .toggle-wrapper.completed .toggle-btn { display: none; }
         .toggle-wrapper.completed .label-text { color: var(--bg-dark); font-weight: 900; }
 
         .label-text {
             width: 100%;
+            padding: 0 10px;
             text-align: center;
             font-size: 11px;
             text-transform: uppercase;
-            letter-spacing: 2px;
+            letter-spacing: 1px;
             font-weight: 700;
             z-index: 1;
             color: var(--soft-mint);
+            white-space: nowrap;
         }
 
         @keyframes moveBackAndForth {
             0%, 100% { transform: translateX(0); }
-            50% { transform: translateX(170px); }
+            50% { transform: translateX(250px); }
         }
     </style>
 </head>
 <body>
+
+<a href="/home" style="position:fixed;top:20px;left:20px;z-index:9999;display:flex;align-items:center;gap:8px;padding:10px 20px;background:rgba(11,20,19,0.8);backdrop-filter:blur(15px);border:1px solid rgba(116,198,157,0.25);border-radius:50px;color:#D8F3DC;text-decoration:none;font-family:'Inter',sans-serif;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;transition:all 0.3s ease;box-shadow:0 4px 20px rgba(0,0,0,0.3);" onmouseover="this.style.background='rgba(45,106,79,0.6)';this.style.borderColor='rgba(116,198,157,0.5)';" onmouseout="this.style.background='rgba(11,20,19,0.8)';this.style.borderColor='rgba(116,198,157,0.25)';"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#74C69D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Home</a>
 
 <div class="sphere s1"></div>
 <div class="sphere s2"></div>
@@ -213,43 +222,44 @@
         <div class="toggle-btn" id="sliderBall"></div>
         <div class="label-text" id="statusText">Analyzing</div>
     </div>
+    <button id="viewAnalysisBtn" style="display:none; margin-top:20px; padding:10px 24px; background:var(--accent-primary); color:var(--bg-dark); border:none; border-radius:8px; font-weight:800; cursor:pointer; font-size:14px;">View Analysis</button>
 </div>
 
 <script>
     const actionButton = document.getElementById('actionButton');
     const statusText = document.getElementById('statusText');
+    const urlParams = new URLSearchParams(window.location.search);
+    const platform = urlParams.get('platform') || 'youtube';
 
     window.onload = function() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const date = urlParams.get('date');
-        const run = urlParams.get('run');
+        const viewBtn = document.getElementById('viewAnalysisBtn');
+        statusText.innerText = "Analyzing...";
 
-        if (run === 'true' && date) {
-            fetch("/api/analyze/youtube", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ selectedDate: date })
-            })
-            .then(res => {
-                if (res.ok) {
-                    actionButton.classList.add('completed');
-                    statusText.innerText = "View Report";
-                } else {
-                    statusText.innerText = "System Error";
-                }
-            })
-            .catch(err => {
-                statusText.innerText = "Connection Lost";
-            });
-        }
+        // Poll backend for completion status
+        const pollStatus = () => {
+            fetch(`/api/analysis-status?platform=${platform}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'completed') {
+                        actionButton.classList.add('completed');
+                        statusText.innerText = "Analysis Completed";
+                        viewBtn.style.display = 'inline-block';
+                    } else if (data.status === 'error') {
+                        statusText.innerText = "Analysis Error";
+                    } else {
+                        setTimeout(pollStatus, 3000);
+                    }
+                })
+                .catch(() => {
+                    statusText.innerText = "Connection Lost";
+                });
+        };
+        pollStatus();
     };
 
-    // Updated click requirement: Redirect to piechartnew.html and scroll
-    actionButton.addEventListener('click', function() {
-        if (this.classList.contains('completed')) {
-            // Redirects to your new page with an anchor hash for scrolling
-            window.location.href = "/piechartnew.html#report";
-        }
+    // Show button and redirect on click
+    document.getElementById('viewAnalysisBtn').addEventListener('click', function() {
+        window.location.href = `piechartnew.html?platform=${platform}`;
     });
 </script>
 </body>

@@ -13,6 +13,12 @@ langchain-huggingface
 pandas
 pydub
 python-dotenv
-whisper
+python-dotenv
+openai-whisper
+ffmpeg-python
 youtube-transcript-api
 yt-dlp
+lxml
+instaloader
+vaderSentiment
+langdetect

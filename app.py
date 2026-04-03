@@ -1,21 +1,29 @@
 import os
 import csv
 import logging
+import threading
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from datetime import datetime
+import threading
 from pymongo import MongoClient
 from urllib.parse import unquote
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from groq import Groq
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 # ------------------------------
 # Import Analyzers
 # ------------------------------
 from youtube_analyzer import analyze_youtube_data
+
+try:
+    from instagram_analyzer import analyze_instagram_data
+except ImportError:
+    analyze_instagram_data = None
 
 try:
     from chat_history_analyzer import process_chat_data 
@@ -36,14 +44,21 @@ MONGO_DB = os.getenv("MONGO_DB", "authentication")
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
 
-app.config['SESSION_COOKIE_SECURE'] = True
+# Configure Upload Folder
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Session Config
+app.config['SESSION_COOKIE_SECURE'] = os.getenv('FLASK_ENV') == 'production'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 CSV_FILE = "chat_history.csv"
 
-# Initialize Mental Health Library with safety check
+# Initialize Mental Health Library
 try:
     if MentalHealthLibrary and GROQ_API_KEY:
         mental_health_lib = MentalHealthLibrary(groq_api_key=GROQ_API_KEY)
@@ -72,9 +87,8 @@ if not os.path.exists(CSV_FILE):
         writer.writerow(["Timestamp", "Mode", "User Input", "AI Response"])
 
 # ------------------------------
-# MongoDB Setup (Cloud Optimized)
+# MongoDB Setup
 # ------------------------------
-# Added serverSelectionTimeoutMS to prevent long hangs on Render
 mongo_client = None
 try:
     mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
@@ -121,8 +135,14 @@ def calendar(): return render_template("calender.html")
 @app.route("/analysis")
 def youtube_analysis_dashboard(): return render_template("analysis.html")
 
+@app.route("/piechartnew.html")
+def piechartnew(): return render_template("piechartnew.html")
+
 @app.route("/chat-analysis")
 def chat_analysis_dashboard(): return render_template("chat_dashboard.html")
+
+@app.route('/transcript')
+def transcript_page(): return render_template('transcript.html')
 
 @app.route("/learning")
 def learning_page():
@@ -130,11 +150,19 @@ def learning_page():
     pdfs = [f for f in os.listdir(pdf_folder) if f.endswith('.pdf')] if os.path.exists(pdf_folder) else []
     return render_template("learn_more.html", pdfs=pdfs)
 
-from flask import send_from_directory
-
-@app.route('/loaderio-04ca9af75b74b38cf9ce01cf634fd042.txt')
-def loaderio_verification():
-    return "loaderio-04ca9af75b74b38cf9ce01cf634fd042"
+@app.route("/api/learn", methods=["POST"])
+def learn_ask():
+    try:
+        if not mental_health_lib:
+            return jsonify({"error": "Library not initialized. Ensure PDFs exist in my_pdfs/ and restart the server."}), 500
+        data = request.get_json()
+        question = data.get("question", "")
+        if not question:
+            return jsonify({"error": "No question provided"}), 400
+        answer = mental_health_lib.ask(question)
+        return jsonify({"answer": answer}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ------------------------------
 # Authentication
@@ -143,85 +171,43 @@ def loaderio_verification():
 def register():
     if users_collection is None:
         return jsonify({"error": "Database unavailable"}), 503
-
     try:
         data = request.get_json()
-
         username = data.get("username", "").strip()
         password = data.get("password", "").strip()
 
-        # ------------------------------
-        # Input Validation (NFR6 Reliability)
-        # ------------------------------
         if not username or not password:
             return jsonify({"error": "Username and password required"}), 400
-
-        if len(username) < 4:
-            return jsonify({"error": "Username must be at least 4 characters"}), 400
-
-        if len(password) < 8:
-            return jsonify({"error": "Password must be at least 8 characters"}), 400
-
-        # ------------------------------
-        # Duplicate User Check (Security)
-        # ------------------------------
         if users_collection.find_one({"username": username}):
             return jsonify({"error": "User already exists"}), 409
 
-        # ------------------------------
-        # Password Hashing (NFR1 Security)
-        # ------------------------------
         hashed_password = generate_password_hash(password)
-
-        # ------------------------------
-        # Store User
-        # ------------------------------
         users_collection.insert_one({
             "username": username,
             "password": hashed_password,
             "created_at": datetime.utcnow(),
             "status": "active"
         })
-
-        # ------------------------------
-        # Audit Log (NFR1/4)
-        # ------------------------------
-        ip_address = request.remote_addr
-        log_action(username, "signup", ip_address)
-
-        return jsonify({
-            "message": "User registered successfully"
-        }), 201
-
+        log_action(username, "signup", request.remote_addr)
+        return jsonify({"message": "User registered successfully"}), 201
     except Exception as e:
-        return jsonify({
-            "error": "Registration failed",
-            "details": str(e)
-        }), 500
+        return jsonify({"error": "Registration failed", "details": str(e)}), 500
 
 @app.route("/login", methods=["POST"])
 def login():
     if users_collection is None:
         return jsonify({"error": "Database is unavailable"}), 503
-
     try:
         data = request.get_json()
         username = data.get("username")
         password = data.get("password")
-
         user = users_collection.find_one({"username": username})
 
         if user and check_password_hash(user["password"], password):
-
             session["user"] = username
-
-            ip_address = request.remote_addr
-            log_action(username, "login", ip_address)
-
+            log_action(username, "login", request.remote_addr)
             return jsonify({"message": "Login successful"}), 200
-
         return jsonify({"error": "Invalid credentials"}), 401
-
     except Exception:
         return jsonify({"error": "Server error"}), 500
 
@@ -233,31 +219,149 @@ def logout():
 # ------------------------------
 # Analysis & Chat APIs
 # ------------------------------
+@app.route("/api/available-dates", methods=["POST"])
+def get_available_dates():
+    """Parse uploaded file and return list of dates that have data."""
+    try:
+        platform = request.form.get("platform")
+        uploaded_file = request.files.get("file")
+
+        if not platform:
+            return jsonify({"error": "Missing platform"}), 400
+
+        dates = []
+
+        if platform == "safespace":
+            # Read dates from chat_history.csv
+            csv_path = "chat_history.csv"
+            if os.path.exists(csv_path):
+                from model_processor import _read_csv_safe
+                import pandas as pd
+                df = _read_csv_safe(csv_path)
+                if df is not None and 'Timestamp' in df.columns:
+                    df['Timestamp_dt'] = pd.to_datetime(df['Timestamp'], errors='coerce')
+                    df = df.dropna(subset=['Timestamp_dt'])
+                    dates = sorted(df['Timestamp_dt'].dt.strftime('%Y-%m-%d').unique().tolist())
+
+        elif platform == "youtube":
+            if not uploaded_file:
+                return jsonify({"error": "File required for YouTube"}), 400
+            filename = secure_filename(uploaded_file.filename)
+            upload_dir = os.path.join(os.getcwd(), 'uploads')
+            os.makedirs(upload_dir, exist_ok=True)
+            file_path = os.path.join(upload_dir, filename)
+            uploaded_file.save(file_path)
+            from youtube_analyzer import parse_youtube_history
+            df = parse_youtube_history(file_path)
+            dates = sorted(df['datetime'].dt.strftime('%Y-%m-%d').unique().tolist())
+
+        elif platform == "instagram":
+            if not uploaded_file:
+                return jsonify({"error": "File required for Instagram"}), 400
+            filename = secure_filename(uploaded_file.filename)
+            upload_dir = os.path.join(os.getcwd(), 'uploads')
+            os.makedirs(upload_dir, exist_ok=True)
+            file_path = os.path.join(upload_dir, filename)
+            uploaded_file.save(file_path)
+            from instagram_analyzer import _resolve_ig_root, parse_all_instagram_data
+            ig_root = _resolve_ig_root(file_path)
+            df = parse_all_instagram_data(ig_root)
+            dates = sorted(df['datetime'].dt.strftime('%Y-%m-%d').unique().tolist())
+
+        return jsonify({"status": "success", "dates": dates, "total": len(dates)})
+
+    except Exception as e:
+        print(f"❌ Error getting available dates: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/run-analysis", methods=["POST"])
 def run_analysis():
     try:
-        data = request.get_json()
-        selected_date = data.get("date")
-        platform = data.get("platform")
-        
-        if not selected_date or not platform:
-            return jsonify({"error": "Missing date or platform"}), 400
+        # Get platform and date from the form (since we sent FormData)
+        selected_date = request.form.get("date")
+        platform = request.form.get("platform")
 
-        if platform == "youtube":
-            date_obj = datetime.strptime(selected_date, "%Y-%m-%d").date()
-            analyze_youtube_data(date_obj)
-            return jsonify({"status": "success", "redirect": "/analysis"})
+        if not selected_date or selected_date == "null" or not platform:
+            return jsonify({"status": "error", "message": "Please select a valid date before starting analysis."}), 400
 
-        elif platform == "safespace":
-            if process_chat_data:
-                result = process_chat_data(selected_date) 
-                if isinstance(result, dict) and result.get("status") == "error":
-                    return jsonify(result), 404
-                return jsonify({"status": "success", "redirect": "/chat-analysis"})
+        # Validate date format
+        try:
+            datetime.strptime(selected_date, "%Y-%m-%d")
+        except ValueError:
+            return jsonify({"status": "error", "message": f"Invalid date format: {selected_date}"}), 400
+
+        # Handle File Upload for non-safespace platforms
+        uploaded_file = request.files.get("file")
+        file_path = None
+        upload_dir = os.path.join(os.getcwd(), 'uploads')
+
+        if platform != "safespace":
+            if uploaded_file and uploaded_file.filename:
+                filename = secure_filename(uploaded_file.filename)
+                os.makedirs(upload_dir, exist_ok=True)
+                file_path = os.path.join(upload_dir, filename)
+                uploaded_file.save(file_path)
+                print(f"✅ File saved: {file_path} ({os.path.getsize(file_path)} bytes)")
             else:
-                return jsonify({"error": "Chat analyzer missing"}), 500
+                # File was already uploaded during /api/available-dates — find it in uploads/
+                if os.path.isdir(upload_dir):
+                    for f in os.listdir(upload_dir):
+                        fpath = os.path.join(upload_dir, f)
+                        if os.path.isfile(fpath) and (f.endswith('.html') or f.endswith('.zip')):
+                            file_path = fpath
+                            print(f"📁 Reusing previously uploaded file: {file_path}")
+                            break
 
-        return jsonify({"error": "Invalid platform"}), 400
+            if not file_path:
+                return jsonify({"status": "error", "message": "Please upload your data file first."}), 400
+
+        # Reset status BEFORE starting thread so the page sees "processing" immediately
+        if platform in ("youtube", "instagram", "safespace"):
+            from model_processor import update_processing_status
+            update_processing_status("processing", platform)
+
+        def do_analysis(selected_date, platform, file_path):
+            try:
+                if platform == "youtube":
+                    date_obj = datetime.strptime(selected_date, "%Y-%m-%d").date()
+                    analyze_youtube_data(date_obj)
+                elif platform == "instagram":
+                    if analyze_instagram_data:
+                        date_obj = datetime.strptime(selected_date, "%Y-%m-%d").date()
+                        analyze_instagram_data(date_obj, file_path)
+                    else:
+                        print("Instagram analyzer missing")
+                elif platform == "safespace":
+                    if process_chat_data:
+                        result = process_chat_data(selected_date)
+                        if isinstance(result, dict) and "error" in result:
+                            print("Chat analysis error:", result)
+                            from model_processor import update_processing_status
+                            update_processing_status("error", "safespace")
+                    else:
+                        print("Chat analyzer missing")
+                else:
+                    print(f"{platform} analysis not yet supported")
+            except Exception as e:
+                print(f"❌ Background analysis error ({platform}): {e}")
+                import traceback
+                traceback.print_exc()
+                try:
+                    from model_processor import update_processing_status
+                    update_processing_status("error", platform)
+                except Exception:
+                    pass
+
+        # Start background thread for analysis
+        thread = threading.Thread(target=do_analysis, args=(selected_date, platform, file_path))
+        thread.start()
+
+        # Respond immediately so frontend can redirect
+        return jsonify({"status": "success", "redirect": f"/analysis?platform={platform}"})
+
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -267,7 +371,7 @@ def chat_with_ai():
         data = request.get_json()
         user_message = data.get("message")
         messages = [
-            {"role": "system", "content": "You are AwareMe, an empathetic therapeutic assistant specializing in cognitive distortions."},
+            {"role": "system", "content": "You are AwareMe, an empathetic therapeutic assistant."},
             {"role": "user", "content": user_message}
         ]
         completion = groq_client.chat.completions.create(
@@ -278,6 +382,113 @@ def chat_with_ai():
         return jsonify({"reply": ai_response, "label": "Analysis Complete"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# ------------------------------
+# Pie Chart & Video Stats APIs (reads from historyDB.youtube)
+# ------------------------------
+@app.route("/api/distortion-breakdown")
+def get_distortion_breakdown():
+    try:
+        platform = request.args.get('platform', 'youtube')
+        col = mongo_client.get_database("historyDB")[platform]
+        doc = col.find_one({}, sort=[("_id", -1)])
+        if doc and "daily_summary" in doc:
+            return jsonify(doc["daily_summary"]["distortion_category_breakdown"]), 200
+        return jsonify({"status": "error", "message": "No summary found"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/video-stats-table")
+def get_video_stats_table():
+    try:
+        platform = request.args.get('platform', 'youtube')
+        col = mongo_client.get_database("historyDB")[platform]
+        doc = col.find_one({}, sort=[("_id", -1)])
+        table_data = []
+        if doc:
+            videos = doc.get("videos", [])
+            for video in videos:
+                analysis = video.get("analysis_summary", {})
+                table_data.append({
+                    "timestamp": video.get("timestamp", "N/A"),
+                    "distortion_percentage": analysis.get("distortion_percentage", 0.0),
+                    "video_title": video.get("video_title", "Unknown Title")
+                })
+        return jsonify(table_data), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/content-trends")
+def get_content_trends():
+    try:
+        platform = request.args.get('platform', 'youtube')
+        col = mongo_client.get_database("historyDB")[platform]
+        doc = col.find_one({}, sort=[("_id", -1)])
+        if doc and "content_trends" in doc:
+            return jsonify(doc["content_trends"]), 200
+        return jsonify(None), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/get-transcript')
+def get_transcript_api():
+    video_title = unquote(request.args.get('title', ''))
+    platform = request.args.get('platform', 'youtube')
+    col = mongo_client.get_database("historyDB")[platform]
+    doc = col.find_one(
+        {"videos.video_title": video_title},
+        sort=[("_id", -1)],
+        projection={"videos.$": 1}
+    )
+    if doc:
+        return jsonify(doc["videos"][0]), 200
+    return jsonify({"error": "Video not found"}), 404
+
+@app.route('/api/analysis-status')
+def check_status():
+    try:
+        platform = request.args.get('platform', 'youtube')
+        task_id = f"{platform}_analysis_task"
+        history_db_ref = mongo_client.get_database("historyDB")
+        status_doc = history_db_ref["status_tracker"].find_one({"_id": task_id})
+        if status_doc:
+            return jsonify({"status": status_doc["status"]})
+        return jsonify({"status": "idle"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+@app.route("/api/analyze/youtube", methods=["POST"])
+def analyze_youtube_api():
+    try:
+        data = request.get_json()
+        selected_date = data.get("selectedDate")
+
+        if not selected_date:
+            return jsonify({"status": "error", "message": "No date provided"}), 400
+
+        # Convert to date object
+        selected_date_obj = datetime.strptime(selected_date, "%Y-%m-%d").date()
+
+        # Run the full pipeline in a background thread
+        def run_analysis_thread(sel_date):
+            from model_processor import update_processing_status
+            try:
+                update_processing_status("processing")
+                # This calls youtube_analyzer which extracts transcripts
+                # and then calls process_transcripts() at the end
+                result = analyze_youtube_data(sel_date)
+                if result.get("status") != "success":
+                    update_processing_status("error")
+            except Exception as e:
+                print(f"Background analysis error: {e}")
+                update_processing_status("error")
+
+        thread = threading.Thread(target=run_analysis_thread, args=(selected_date_obj,))
+        thread.start()
+
+        return jsonify({"status": "success", "message": "Analysis started"}), 200
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
