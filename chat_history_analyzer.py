@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 from pymongo import MongoClient
 from model_processor import (
-    full_pipeline, DISTORTIONS,
+    improved_full_pipeline, DISTORTIONS,
     clean_overlapping_snippets, update_processing_status
 )
 
@@ -68,7 +68,7 @@ def process_chat_data(selected_date):
         total_batch_words += transcript_word_count
 
         # Run full enhanced pipeline
-        pipeline_result, pipeline_info = full_pipeline(text)
+        pipeline_result, pipeline_info = improved_full_pipeline(text)
 
         if 'skipped' in pipeline_info:
             final_video_list.append({

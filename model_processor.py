@@ -130,14 +130,14 @@ def clean_overlapping_snippets(snippets):
 _llm_failures = 0  # Track consecutive failures to avoid spamming a paused endpoint
 _LLM_MAX_FAILURES = 2  # Stop trying after this many consecutive failures
 
-def call_llm(user_text):
+def call_llm(prompt_text, user_text):
     """Call LLM and parse JSON response. Returns empty dict if LLM not available or endpoint is down."""
     global _llm_failures
     if not LLM_AVAILABLE or client is None:
         return {}
     if _llm_failures >= _LLM_MAX_FAILURES:
         return {}
-    full_prompt = f"{SYSTEM_PROMPT}\n\nInput text:\n\"{user_text}\"\n\nOutput JSON:\n"
+    full_prompt = f"{prompt_text}\n\nInput text:\n\"{user_text}\"\n\nOutput JSON:\n"
     try:
         response = client.text_generation(full_prompt, max_new_tokens=600, temperature=0.0)
         _llm_failures = 0  # Reset on success
@@ -192,7 +192,7 @@ def validate_llm_output(llm_result, original_text):
 
 # Backward-compatible alias
 def identify_cognitive_distortions_llm(user_text):
-    raw = call_llm(user_text)
+    raw = call_llm(SYSTEM_PROMPT, user_text)
     return validate_llm_output(raw, user_text) if raw else {}
 
 # ===============================
@@ -342,8 +342,8 @@ def classify_content_type(text):
             return 'song_lyrics', True
 
     song_signals = [r'\b(verse|chorus|bridge|feat\.?|ft\.?|prod\.?|remix|lyrics)\b',
-                    r'\b(la\s+la|na\s+na|oh\s+oh|yeah\s+yeah)\b']
-    if sum(1 for p in song_signals if re.search(p, lower)) >= 1:
+                    r'\b(la\s+la\s+la|na\s+na\s+na|oh\s+oh\s+oh)\b']
+    if sum(1 for p in song_signals if re.search(p, lower)) >= 2:
         return 'song_lyrics', True
 
     ad_signals = [r'[\$£€]\d+', r'\b(discount|sale|off|buy|shop|order|promo|coupon)\b',
@@ -443,7 +443,7 @@ def full_pipeline(text, skip_content_gate=False):
     regex_out = improved_regex_detector(text)
 
     # Detection: LLM (skipped if not available)
-    llm_raw = call_llm(text)
+    llm_raw = call_llm(SYSTEM_PROMPT, text)
     llm_validated = validate_llm_output(llm_raw, text) if llm_raw else {}
     pipeline_info['llm_available'] = LLM_AVAILABLE
 
@@ -473,6 +473,471 @@ def full_pipeline(text, skip_content_gate=False):
 
     pipeline_info['confidence'] = {
         d: round(compute_confidence(text, regex_out, llm_validated, d) * sent_multiplier * fp_multiplier, 2)
+        for d in DISTORTIONS if final[d]
+    }
+    return final, pipeline_info
+
+# ===============================
+# V2 PIPELINE: Expanded detection for conversational content
+# ===============================
+
+# --- MongoDB-backed pattern storage ---
+_cached_patterns = None
+
+def _load_patterns_from_mongo():
+    """Load expanded regex patterns from MongoDB. Returns None if unavailable."""
+    try:
+        mc = MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
+        db = mc["historyDB"]
+        doc = db["detection_patterns"].find_one({"_id": "expanded_patterns_v2"})
+        if doc and "patterns" in doc:
+            return doc["patterns"]
+    except Exception:
+        pass
+    return None
+
+def _save_patterns_to_mongo(patterns):
+    """Save expanded regex patterns to MongoDB for remote updates."""
+    try:
+        mc = MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
+        db = mc["historyDB"]
+        db["detection_patterns"].update_one(
+            {"_id": "expanded_patterns_v2"},
+            {"$set": {"patterns": patterns, "updated_at": datetime.now()}},
+            upsert=True
+        )
+    except Exception as e:
+        print(f"⚠️ Failed to save patterns to MongoDB: {e}")
+
+# Default hardcoded patterns (used as fallback if MongoDB is unreachable)
+DEFAULT_EXPANDED_PATTERNS = {
+    "All-or-Nothing Thinking": [
+        r"\b(complete(?:ly)?\s+(?:failure|disaster|waste|useless))",
+        r"\b(either\s+.{3,30}\s+or\s+(?:not|nothing|never))\b",
+        r"\b((?:totally|completely|absolutely)\s+(?:ruined|worthless|hopeless|useless|awful))",
+        r"\b(100%|zero\s+(?:chance|hope))\b",
+        r"\b((?:the\s+)?(?:whole|entire)\s+(?:day|week|life|thing|career|year)\s+is\s+(?:ruined|wasted|over|destroyed))",
+        r"\b(i\s+(?:am|'m)\s+(?:completely|totally|absolutely)\s+(?:useless|worthless|hopeless|stupid))",
+        r"\b((?:don'?t|doesn'?t|never)\s+belong)",
+        r"\b((?:won'?t|can'?t)\s+(?:be\s+able\s+to\s+)?(?:do\s+anything|focus\s+on\s+anything|get\s+anything))",
+        r"\b((?:you|he|she|they)\s+(?:are?|is)\s+(?:the\s+)?(?:villain|crazy|insane|mental|delusional|toxic|abusive|cheating|stealing|controlling|manipulating|immature|unstable))",
+        r"\b((?:you're|he's|she's|they're)\s+(?:(?:the\s+)?(?:villain|crazy|insane|mental|delusional|toxic|abusive|cheating|stealing|controlling|manipulating|immature|unstable)))",
+        r"\b((?:you|he|she|they)\s+(?:are?|is)\s+a\s+(?:crazy\s+person|brat|child|liar|loser|snob|jerk|psycho|narcissist|horrible\s+person|bad\s+friend|bad\s+person))",
+        r"\b((?:you're|he's|she's|they're)\s+a\s+(?:crazy\s+person|brat|child|liar|loser|snob|jerk|psycho|narcissist|horrible\s+person|bad\s+friend|bad\s+person))",
+        r"\b((?:this|that)\s+(?:kid|person|man|woman|guy|girl)\s+(?:is|was)\s+(?:a\s+)?(?:brat|crazy|insane|psycho|villain|jerk|wild|hysterical|dramatic|ridiculous))",
+        r"\b((?:he|she|they|you|\w+)\s+(?:is|are|was|were)\s+(?:so\s+)?(?:wild|hysterical|dramatic|ridiculous|unhinged|out\s+of\s+control|out\s+of\s+line))",
+        r"\b((?:that|it|this)\s+(?:\w+\s+)?(?:was|were)\s+(?:so\s+)?(?:crazy|insane|wild|mental|nuts|ridiculous|absurd|unreal|stressful))\b",
+        r"\b((?:tonight|today|yesterday|last\s+night)\s+was\s+(?:so\s+)?(?:crazy|insane|wild|stressful|hectic|chaotic|intense))\b",
+        r"\b((?:i\s+)?(?:started|was|were|got|getting)\s+(?:so\s+|really\s+)?(?:hysterical|dramatic|crazy|unhinged|out\s+of\s+control|aggressive|violent|physical))\b",
+        r"\b((?:show\s+up|eat|be\s+there|do\s+it).{0,30}or\s+don'?t\s+(?:come|bother|show\s+up)(?:\s+at\s+all)?)",
+        r"\b(you\s+either\s+.{3,40}\s+or\s+.{3,30})",
+        r"\b((?:he|she|they|you)\s+(?:has|have)\s+no\s+(?:respect|manners|class|empathy|boundaries|shame|trust|decency))",
+        r"\b((?:this|that)\s+is\s+(?:not\s+)?(?:rational|normal|acceptable|sane)\s+(?:behavio(?:u?r)|thinking))",
+        r"\b((?:that\s+person|this\s+person|he|she|they|you)\s+need(?:s)?\s+(?:a\s+)?(?:therapist|therapy|help|professional\s+help))",
+        r"\b((?:they|he|she)\s+(?:like|love)(?:s)?\s+to\s+be\s+in\s+(?:that\s+)?(?:victim\s+mentality|victim\s+mode))",
+        r"\b((?:no,?|naughty|bad|horrible|terrible|awful)\s+(?:girl|boy|person|kid|man|woman))\b",
+        r"\b((?:you're|he's|she's|they're)\s+(?:stealing|lying|cheating|manipulating|gaslighting|controlling|abusing))",
+        r"\b((?:he|she|they)\s+doesn'?t\s+(?:love|like|care\s+about|respect|want)\s+you)",
+        r"\b((?:he|she)\s+doesn'?t\s+(?:love|like|care\s+about|respect|want)\s+(?:her|him))",
+        r"\b(if\s+(?:he|she|they)\s+(?:loved|liked|cared|wanted|respected)\s+you,?\s+(?:he|she|they)\s+would(?:\s+\w+){0,6})",
+        r"\b(you\s+(?:have|need)\s+to\s+(?:forgive|forget|move\s+on|let\s+(?:it|go|him|her)\s+go|get\s+over|accept|leave|stay|stop|grow\s+up)(?:\s+\w+){0,4})",
+    ],
+    "Overgeneralization": [
+        r"\b(i\s+(?:always|never)\s+(?:fail|mess|screw|ruin|lose|forget|get))",
+        r"\b((?:no\s*one|nobody)\s+(?:ever\s+)?(?:loves?|likes?|cares?|listens?|wants?))",
+        r"\b((?:everyone|everybody)\s+(?:hates?|leaves?|thinks?\s+i'm?|judges?|is\s+(?:smarter|better|faster|more)))",
+        r"\b((?:nothing)\s+(?:ever|good)\s+(?:works?|happens?|goes?))",
+        r"\b(i\s+(?:always|never)\s+(?:end\s+up|wind\s+up|make|do\s+(?:things?|it)))",
+        r"\b(nobody\s+(?:ever\s+)?(?:will|would|wants?\s+to))",
+        r"\b(all\s+(?:men|women|guys|girls|people|kids|friends)\s+(?:\w+\s+){0,3}(?:have|are|do|want|need|think|say|get|lie|cheat))",
+        r"\b((?:this|that|it)\s+happens\s+to\s+(?:everyone|everybody|all\s+of\s+us))",
+        r"\b(you'?re?\s+never\s+going\s+to\s+(?:\w+\s*){1,5})",
+        r"\b(people\s+always\s+(?:\w+\s*){1,6})",
+        r"\b((?:he|she|they|you)\s+always\s+(?:\w+\s*){1,4}(?:do(?:es)?|make|get|say|lie|cheat|flake|cancel|bail|come\s+late|show\s+up\s+late))",
+        r"\b((?:he|she|they|you)\s+never\s+(?:\w+\s*){0,3}(?:listen|care|ask|help|show|change|learn|respect)(?:s|ed)?)",
+        r"\b((?:everyone|everybody)\s+(?:always|never|does|knows|thinks|says|wants|hates|loves)(?:\s+\w+){0,4})",
+        r"\b((?:nobody|no\s+one)\s+(?:ever\s+)?(?:cares?|listens?|asks?|helps?|understands?|wants?|gets?\s+it))",
+        r"\b(who\s+(?:the\s+\w*\s+)?cares?\b)",
+        r"\b((?:she|he|they)\s+(?:is|are)\s+always\s+(?:late|lying|flaking|canceling|complaining|negative|dramatic|rude))",
+        r"\b(there'?s?\s+nothing\s+in\s+(?:these|those|the)\s+\w+)",
+        r"\b((?:men|women|people|friends|boys|girls|guys|they)\s+come,?\s+(?:and\s+)?(?:they\s+)?go)",
+        r"\b(we\s+all\s+(?:make|have|do|want|need|know|feel|say|go\s+through|are|get)\s+(?:\w+\s*){1,5})",
+        r"\b(every\s+single\s+(?:thing|time|day|person|one)\s+(?:\w+\s*){1,6})",
+        r"\b(not\s+everyone\s+(?:wants?|has|can|will|is\s+going)\s+(?:to\s+)?(?:\w+\s*){1,6})",
+        r"\b(another\s+(?:sleepless|bad|terrible|awful|horrible)\s+(?:night|day|week|morning|evening))",
+        r"\b(another\s+(?:sister\s+)?(?:fight|argument|drama|disaster|breakup|crisis|meltdown|blowup))",
+        r"\b((?:been|was|is)\s+(?:in\s+a\s+)?(?:bad|terrible|awful|foul|nasty|angry|sad|depressed|moody|grumpy|bitchy|salty|badass)(?:\s+(?:ass\s+)?(?:mood|state|place))?\s+all\s+(?:day|night|week|morning|trip|time))",
+        r"\b((?:\w+'?s?)\s+been\s+in\s+a\s+(?:bad|terrible|awful|foul|nasty|badass)(?:\s+(?:ass\s+)?mood)?\s+all\s+(?:day|night|week|morning|trip|time))",
+        r"\b((?:we'?re?|they'?re?)\s+(?:ending|starting|going\s+through)\s+(?:this|the)\s+(?:\w+\s*){0,4}(?:with\s+)?another(?:\s+\w+){0,4})",
+    ],
+    "Mental Filtering": [
+        r"\b(only\s+(?:bad|negative|wrong|terrible)\s+things?)\b",
+        r"\b(nothing\s+(?:good|right|positive)\s+(?:ever\s+)?(?:happens?))",
+        r"\b(can'?t\s+see\s+any(?:thing)?\s+(?:good|positive))",
+        r"\b(only\s+(?:think|focus|see|remember)\s+(?:about\s+)?(?:the\s+)?(?:bad|negative|wrong))",
+    ],
+    "Disqualifying the Positive": [
+        r"\b((?:just|only)\s+(?:luck|being\s+nice|saying\s+that|pity))\b",
+        r"\b(doesn'?t\s+(?:really\s+)?(?:count|matter|mean\s+anything))",
+        r"\b((?:anyone|anybody)\s+could\s+(?:have\s+)?(?:done?|do)\s+that)",
+        r"\b(they\s+(?:were|are)\s+just\s+(?:being\s+)?(?:nice|polite|kind))",
+        r"\b(she\s+(?:doesn'?t|won'?t)\s+know\s+(?:she\s+)?(?:technically|actually)\s+paid)",
+        r"\b(but\s+(?:you'?re?|she'?s?|he'?s?)\s+not\s+(?:really\s+)?(?:telling|saying|admitting))",
+    ],
+    "Jumping to Conclusions": [
+        r"\b((?:they|she|he)\s+(?:must|probably)\s+(?:think|hate|be\s+(?:angry|mad|upset)))",
+        r"\b(i\s+(?:just\s+)?know\s+(?:it|this|they|i)\s+will\s+(?:fail|go\s+wrong))",
+        r"\b((?:this|it)\s+(?:will|is\s+going\s+to)\s+(?:be\s+)?(?:a\s+)?(?:disaster|terrible|awful))",
+        r"\b((?:maybe|probably|must\s+be)\s+(?:ignoring|avoiding|hating|angry\s+at|mad\s+at)\s+me)",
+        r"\b((?:she|he|they)\s+(?:is|are)\s+(?:ignoring|avoiding|annoyed\s+with|upset\s+with)\s+me)",
+        r"\b((?:doesn'?t|don'?t)\s+want\s+to\s+(?:talk|be|hang)\s+(?:to|with)\s+me)",
+        r"\b((?:he|she|they|\w+)'?(?:s|re)?\s+(?:just\s+)?trying\s+to\s+(?:make|manipulate|control|gaslight|guilt|trick|use|justify|break|ruin|sabotage|destroy|push|pull|split|separate|turn)(?:\s+\w+){0,5})",
+        r"\b(i\s+(?:just\s+)?know\s+(?:he|she|they|\w+)\s+(?:wants?|thinks?|feels?|means?|would|will|hates?)(?:\s+\w+){0,6})",
+        r"\b(i\s+(?:just\s+)?know\s+(?:he|she|they|\w+)\s+is\s+(?:going\s+to|trying|lying|hiding|cheating|faking|pretending|avoiding)(?:\s+\w+){0,5})",
+        r"\b(i'?m\s+(?:sure|certain|positive|convinced)\s+(?:he|she|they|\w+)\s+(?:is|are|was|were|will|would)(?:\s+\w+){0,6})",
+        r"\b((?:he|she|they|\w+)\s+is\s+going\s+to\s+(?:downplay|deny|lie|pretend|blame|twist|make\s+it\s+seem|act\s+like|play\s+the\s+victim)(?:\s+\w+){0,5})",
+        r"\b(i\s+already\s+know\s+(?:\w+\s*){1,6}(?:is|are)\s+going\s+to(?:\s+\w+){0,5})",
+        r"\b((?:he|she|they|that\s+person)\s+(?:is|are)\s+(?:just\s+)?(?:taking\s+advantage|using\s+(?:you|her|him)|manipulating|gaslighting))",
+        r"\b((?:he|she|they)'?(?:s|re)?\s+(?:definitely\s+|clearly\s+|obviously\s+)?cheating\b)",
+        r"\b((?:he|she|they)\s+(?:must|probably)\s+(?:think|feel|believe|know|want|be\s+(?:angry|mad|upset|jealous|using|hiding))(?:\s+\w+){0,4})",
+        r"\b(looked\s+at\s+(?:me|her|him|us|them)\s+like\s+(?:\w+\s*){2,8})",
+        r"\b(you\s+(?:need|have)\s+to\s+(?:break\s+up|leave|run|get\s+out|dump|divorce)(?:\s+\w+){0,5})",
+        r"\b(don'?t\s+let\s+(?:him|her|them)\s+(?:manipulate|gaslight|control|use|take\s+advantage)(?:\s+\w+){0,4})",
+        r"\b((?:your|her|his|their)\s+(?:mom|dad|friend|boyfriend|girlfriend|husband|wife|partner)\s+is\s+(?:having|going\s+through)\s+(?:a\s+)?(?:midlife\s+crisis|breakdown|manic\s+episode|mental\s+break))",
+        r"\b((?:he|she|they)'?(?:s|re)?\s+(?:using|playing)\s+(?:you|her|him|your\s+\w+)(?:\s+\w+){0,4})",
+        r"\b((?:sounds?|seems?)\s+(?:like\s+)?(?:a\s+)?(?:very\s+)?(?:controlling|possessive|manipulative|toxic|abusive|unhealthy|codependent|one[- ]?way)(?:\s+\w+){0,3})",
+        r"\b((?:he|she|they)\s+(?:says?|said|does|did)\s+(?:that|it|this|\w+)\s+because\s+(?:he|she|they)'?(?:s|re)?\s+(?:\w+\s*){0,3}(?:embarrassed|humiliated|jealous|insecure|afraid|scared|guilty|ashamed|uncomfortable|awkward|nice|polite))",
+        r"\b(you\s+only\s+(?:\w+\s*){1,5}because\s+you'?re?\s+(?:embarrassed|humiliated|jealous|afraid|scared|ashamed|insecure|guilty))",
+        r"\b(you\s+(?:will|would|are\s+going\s+to)\s+(?:really\s+)?(?:regret|lose|miss|suffer|fail|never)(?:\s+\w+){0,6})",
+        r"\b((?:what'?s?|what\s+is)\s+meant\s+for\s+you\s+will\s+(?:always\s+)?find\s+you)",
+        r"\b(if\s+(?:he|she|they)\s+(?:loved|cared|wanted|liked)\s+you,?\s+(?:he|she|they)\s+would\s+(?:have\s+)?(?:\w+\s*){1,6})",
+        r"\b((?:he|she|they)\s+(?:was|were|is|are)\s+(?:just\s+)?(?:being\s+)?(?:nice|polite)\s+(?:and\s+)?(?:saying\s+that|by\s+saying))",
+        r"\b((?:he|she|they)\s+(?:was|were|is|are)\s+(?:just\s+)?(?:embarrassed|humiliated|jealous|insecure|uncomfortable|guilty|ashamed))",
+        r"\b((?:he|she|they)\s+didn'?t\s+(?:even\s+)?(?:mind|bother|care|check|think|notice)(?:\s+\w+){0,5})",
+    ],
+    "Catastrophizing": [
+        r"\b((?:my|the)\s+(?:whole\s+)?(?:life|career|future|world)\s+is\s+(?:over|ruined|destroyed))",
+        r"\b((?:can'?t|won'?t)\s+(?:ever\s+)?(?:recover|survive|get\s+through))",
+        r"\b((?:i\s+)?(?:might|will)\s+(?:never|not)\s+(?:get|find|have|make\s+it|succeed))",
+        r"\b((?:chose|choosing)\s+the\s+wrong\s+(?:field|path|career|major|job))",
+        r"\b((?:that|it|this)\s+(?:is|was|were)\s+(?:so\s+)?(?:insane|crazy|mental|abuse|sick|ridiculous|absurd|delusional|psychotic|unhinged|nuts|bonkers|horrifi\w*|terrif\w*|stressful))\b",
+        r"\b((?:that|it|this)\s+(?:\w+\s+)?(?:is|was|were)\s+(?:so\s+)?(?:insane|crazy|mental|abuse|sick|ridiculous|absurd|delusional|psychotic|unhinged|nuts|bonkers|horrifi\w*|terrif\w*|stressful))\b",
+        r"\b((?:that|it|this)\s+(?:was|is)\s+(?:so\s+)?(?:crazy|wild|insane|mental|nuts|stressful|hectic|chaotic|intense))\b",
+        r"\b(the\s+damage\s+(?:was|is|has\s+been)\s+done)",
+        r"\b((?:going\s+to|will|gonna)\s+lose\s+all\s+(?:trust|hope|faith|respect|credibilit\w*)(?:\s+\w+){0,4})",
+        r"\b((?:anyone|anybody)\s+(?:who|that)\s+(?:\w+\s+){1,8}is\s+(?:actually\s+)?(?:mentally\s+unstable|insane|crazy|abusi\w*|psycho\w*))",
+        r"\b(\d+\s+(?:to\s+\d+\s+)?(?:weeks?|months?|days?|hours?)\s+is\s+(?:abuse|insane|crazy|mental|torture))",
+        r"\b((?:this|that)\s+is\s+(?:not\s+)?(?:rational|normal|sane|healthy|okay)\s+(?:behavio\w*|thinking)?)\b",
+        r"\b(what\s+(?:the\s+\w*\s+)?is\s+wrong\s+with\s+(?:you|him|her|them|these\s+people))",
+        r"\b((?:this|that)\s+is\s+(?:so\s+)?(?:up|messed\s+up|screwed\s+up|insane|unreal))\b",
+        r"\b((?:it'?s?|this|that|(?:he|she|they)'?(?:s|re)?)\s+(?:is\s+)?ruining\s+my\s+(?:life|career|relationship|health|marriage|friendship))",
+        r"\b(you\s+never\s+(?:get\s+over|forget|recover\s+from|move\s+on\s+from)(?:\s+(?:losing|it|that|this|a|the)(?:\s+\w+){0,5})?)",
+        r"\b((?:this|that)\s+is\s+my\s+(?:biggest|worst|greatest)\s+(?:fear|nightmare|regret))",
+        r"\b(you'?ve?\s+(?:already\s+)?(?:lost|ruined|destroyed|wasted)\s+(?:your|the|a)\s+(?:\w+\s*){1,4})",
+        r"\b(you\s+(?:will|would|are\s+going\s+to)\s+(?:really\s+)?regret(?:\s+\w+){0,6})",
+        r"\b((?:it|this|that)\s+(?:really\s+)?(?:breaks|broke|is\s+breaking)\s+my\s+heart)",
+        r"\b((?:it|this|that)\s+(?:just\s+|really\s+)?(?:destroys|destroyed|kills|killed)\s+me)",
+        r"\b((?:it|this|that|everything)\s+(?:is\s+)?(?:spiral(?:ing|ed)?\s+out\s+of\s+control))",
+        r"\b(chips?\s+away\s+at\s+my\s+(?:soul|heart|sanity|wellbeing|mental\s+health))",
+        r"\b((?:it|this|that)\s+(?:really\s+)?sucks)",
+        r"\b(another\s+sleepless\s+night)",
+        r"\b((?:see|saw|watch(?:ing)?)\s+(?:everything|things?|it\s+all)\s+(?:spiral|fall\s+apart|collapse|crumble|go\s+(?:wrong|south|downhill)))",
+    ],
+    "Emotional Reasoning": [
+        r"\b(i\s+feel\s+(?:like\s+)?(?:a\s+)?(?:failure|burden|worthless|stupid|ugly|loser|fraud))",
+        r"\b(i\s+feel\s+(?:so\s+)?(?:dumb|hopeless|helpless|pathetic))",
+        r"\b((?:feel(?:s)?)\s+(?:like\s+)?(?:everything|nothing|no\s*one))",
+        r"\b(i\s+(?:am|'m)\s+(?:so\s+)?(?:stupid|dumb|useless|worthless|pathetic|a\s+failure))",
+        r"\b(i\s+feel\s+like\s+i\s+(?:am|'m|don'?t|can'?t|shouldn'?t))",
+        r"\b(i\s+(?:don'?t\s+really\s+)?feel\s+like\s+(?:this|that|the)\s+(?:fight|situation|relationship|conversation|trip|argument|problem|issue|thing)\s+(?:is|was|isn'?t|wasn'?t)(?:\s+\w+){0,6})",
+        r"\b(i\s+feel\s+(?:so\s+|pretty\s+|really\s+|very\s+|super\s+)?(?:disrespected|offended|hurt|betrayed|abandoned|ignored|dismissed|invalidated|attacked|targeted|used|manipulated|unsafe|unwelcome|unwanted|uncomfortable|overwhelmed|ambushed))",
+        r"\b(i\s+(?:just\s+)?feel\s+(?:so\s+|really\s+)?(?:bad|terrible|awful|sorry|sad|guilty|responsible)\s+for\s+(?:my\s+)?(?:\w+))",
+        r"\b(i'?m\s+(?:pretty|so|really|very|just)?\s*(?:offended|hurt|upset|angry|mad|frustrated|disappointed|devastated|heartbroken|disgusted|horrified|shocked|scared|terrified)(?:\s+(?:and|by|about|that)(?:\s+\w+){0,6})?)",
+        r"\b((?:this|that|it)\s+is\s+(?:giving\s+me|triggering)(?:\s+\w+){0,5})",
+        r"\b((?:this|that)\s+is\s+giving\s+me\s+(?:so\s+much\s+)?(?:PTSD|anxiety|depression|flashback\w*|panic))",
+        r"\b(i\s+fe(?:el|lt)\s+(?:so\s+)?(?:bad|weird|grossed\s+out|shocked|disgusted|uncomfortable|icky)(?:\s+\w+){0,10}(?:second[- ]?guess|rethink|doubt|question|can'?t\s+stop))",
+        r"\b(i'?m?\s+concerned\s+about\s+(?:these|those|this|that)\s+(?:people|person)\w*)",
+        r"\b((?:this|that)\s+is\s+giving\s+me\s+(?:so\s+much\s+)?PTSD)",
+        r"\b((?:this|that)\s+is\s+(?:so\s+)?triggering(?:\s+me)?(?:\s+\w+){0,3})",
+        r"\b((?:this|that)\s+is\s+(?:insulting|offensive|disrespectful)(?:\s+and\s+(?:that|it)\s+would\s+cut)?)",
+        r"\b(i\s+feel\s+like\s+i\s+(?:won'?t|can'?t|will\s+never)\s+(?:find|get|have|be|make|do)(?:\s+\w+){0,6})",
+        r"\b(i\s+feel\s+(?:so\s+)?(?:replaced|behind|rejected|robbed|broken|trapped|stuck|lost|invisible|unwanted|unlovable|alone|lonely)\b)",
+        r"\b(i\s+feel\s+(?:like\s+)?(?:people|everyone|they|friends?)\s+(?:are\s+)?(?:always\s+)?(?:judging|watching|looking\s+at|staring\s+at|talking\s+about)(?:\s+me)?)",
+        r"\b(i\s+(?:feel|felt)\s+(?:like\s+)?(?:i\s+)?(?:was|am|'m)\s+(?:really\s+)?(?:going\s+crazy|losing\s+(?:my\s+mind|it)|the\s+problem|not\s+enough|too\s+much|broken))",
+    ],
+}
+
+def get_expanded_patterns():
+    """Load patterns from MongoDB cache, falling back to hardcoded defaults."""
+    global _cached_patterns
+    if _cached_patterns is not None:
+        return _cached_patterns
+    mongo_patterns = _load_patterns_from_mongo()
+    if mongo_patterns:
+        _cached_patterns = mongo_patterns
+    else:
+        _cached_patterns = DEFAULT_EXPANDED_PATTERNS
+        _save_patterns_to_mongo(DEFAULT_EXPANDED_PATTERNS)
+    return _cached_patterns
+
+# --- Semantic chunking for LLM ---
+def split_into_semantic_chunks(text, max_words=500):
+    """Split long text into coherent chunks at sentence boundaries."""
+    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
+    if len(sentences) <= 1:
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+    chunks = []
+    current = []
+    current_words = 0
+    for sent in sentences:
+        sent = sent.strip()
+        if not sent:
+            continue
+        sent_words = len(sent.split())
+        if current_words + sent_words > max_words and current:
+            chunks.append(" ".join(current))
+            current = [sent]
+            current_words = sent_words
+        else:
+            current.append(sent)
+            current_words += sent_words
+    if current:
+        chunks.append(" ".join(current))
+    return [c for c in chunks if len(c.split()) >= 20]
+
+# --- Interpersonal pronoun gate ---
+INTERPERSONAL_PRONOUNS = re.compile(
+    r"\b(you|you're|you've|you'll|your|yours|yourself|"
+    r"he|he's|he'd|him|his|himself|"
+    r"she|she's|she'd|her|hers|herself|"
+    r"they|they're|they've|their|theirs|themselves)\b",
+    re.IGNORECASE
+)
+
+def interpersonal_ratio(text):
+    words = text.split()
+    if not words:
+        return 0.0
+    count = sum(1 for w in words if INTERPERSONAL_PRONOUNS.match(w))
+    return count / len(words)
+
+def interpersonal_gate(text):
+    fp = first_person_ratio(text)
+    ip = interpersonal_ratio(text)
+    combined = fp + ip
+    if combined > 0.05:
+        return 1.0, combined
+    elif combined > 0.02:
+        return 0.85, combined
+    else:
+        return 0.5, combined
+
+# --- V2 Regex detector ---
+def improved_regex_detector_v2(text):
+    """Run expanded regex patterns on full text using finditer."""
+    result = {d: [] for d in DISTORTIONS}
+    lower = text.lower()
+    patterns = get_expanded_patterns()
+    for distortion, pats in patterns.items():
+        for pat in pats:
+            try:
+                for match in re.finditer(pat, lower):
+                    phrase = match.group(0).strip()
+                    phrase = re.sub(r'\s+', ' ', phrase)
+                    if len(phrase.split()) < 2:
+                        continue
+                    words = phrase.split()
+                    if len(words) > 20:
+                        phrase = " ".join(words[:20])
+                    result[distortion].append(phrase)
+            except re.error:
+                continue
+    for d in DISTORTIONS:
+        seen = set()
+        clean = []
+        for p in result[d]:
+            p_lower = p.lower().strip()
+            if p_lower not in seen:
+                is_sub = any(p_lower in existing for existing in seen)
+                if not is_sub:
+                    seen.add(p_lower)
+                    clean.append(p)
+        result[d] = clean
+    return result
+
+# --- Improved LLM prompt for conversational content ---
+IMPROVED_LLM_PROMPT = """You are a cognitive distortion detector analyzing conversational content (podcasts, vlogs, advice, social commentary).
+
+IMPORTANT: Distortions appear in ALL forms of speech — not just "I" statements. Look for distortions in:
+- Advice/judgments about others ("You need to break up", "He's the villain")
+- Labels applied to people ("She's crazy", "You're a child", "That person needs a therapist")
+- Sweeping generalizations ("All men do X", "People always Y", "This happens to everyone")
+- Assumed motives stated as fact ("He's just trying to manipulate you", "She's taking advantage")
+- Exaggerated reactions to situations ("This is insane", "That is abuse", "The damage was done")
+- Feelings treated as evidence ("This is giving me PTSD", "This is triggering me")
+
+## DISTORTION TYPES:
+
+1. **All-or-Nothing Thinking**: Absolute labels, binary judgments, reducing people to single traits.
+   - "You are the villain" / "She's a crazy person" / "He is the villain"
+   - "You are a child" / "Grow up and get it together"
+   - "Show up on time or don't come at all"
+   - "That person needs a therapist" (labeling someone as broken)
+
+2. **Overgeneralization**: Sweeping universal claims from specific instances.
+   - "All men have a lot of sex"
+   - "You're never going to like the number"
+   - "People always make you feel bad when it doesn't benefit them"
+   - "This happens to everyone at least once"
+   - "She always flakes last minute"
+
+3. **Mental Filtering**: Focusing exclusively on negative details, ignoring positives.
+   - "I got 9 compliments and 1 criticism — my work is terrible"
+
+4. **Disqualifying the Positive**: Rejecting positive experiences as not counting.
+   - "They only said that to be nice"
+   - "She technically paid for our drinks herself" (reframing a kind act)
+
+5. **Jumping to Conclusions**: Definitive judgments without full evidence. Mind-reading, fortune-telling.
+   - "He's cheating" (stated as absolute fact from one notification)
+   - "He's trying to make himself feel better" (attributing motives)
+   - "She looked at me like I ruined the vibe" (mind-reading expressions)
+   - "He may be using your mom as a way to move back" (assuming hidden agenda)
+   - "You need to break up with your boyfriend" (prescriptive from limited info)
+   - "Sounds like a one-way friendship" (conclusion from one-sided story)
+
+6. **Catastrophizing**: Extreme exaggeration. Treating disagreements as catastrophes.
+   - "Anyone that wants to stay 5-6 weeks is actually mentally unstable"
+   - "The damage was done"
+   - "This is insane" / "This is mental" / "This is abuse" (about interpersonal disagreements)
+   - "Your roommate is going to lose all trust in you"
+
+7. **Emotional Reasoning**: Feelings used as evidence for conclusions.
+   - "This is giving me so much PTSD" (casual clinical term from emotion)
+   - "This is triggering me" (feeling → conclusion about content)
+   - "I felt shocked and grossed out... now I can't stop thinking about it"
+   - "I'm concerned about these people" (emotional judgment)
+
+## RULES:
+- Extract EXACT phrases from the text. Do not paraphrase.
+- Include distortions said by ANY speaker (not just first person).
+- Conversational advice and judgments CAN contain distortions.
+- Skip song lyrics, product descriptions, and factual statements.
+- When in doubt, INCLUDE the phrase — we validate separately.
+
+## OUTPUT FORMAT:
+Return ONLY this JSON:
+{"All-or-Nothing Thinking": [], "Overgeneralization": [], "Mental Filtering": [], "Disqualifying the Positive": [], "Jumping to Conclusions": [], "Catastrophizing": [], "Emotional Reasoning": []}"""
+
+# --- V2 Confidence scoring ---
+CONFIDENCE_THRESHOLD_V2 = 0.35
+CONFIDENCE_THRESHOLD_V2_NO_LLM = 0.25
+
+def compute_confidence_v2(text, regex_result, llm_result, category):
+    signals = 0
+    max_signals = 5
+    if regex_result.get(category):
+        signals += 1
+    if llm_result.get(category):
+        signals += 1
+    elif not LLM_AVAILABLE:
+        max_signals -= 1
+    if sentiment_score(text) < -0.05:
+        signals += 1
+    combined_ratio = first_person_ratio(text) + interpersonal_ratio(text)
+    if combined_ratio > 0.03:
+        signals += 1
+    all_phrases = (regex_result.get(category, []) or []) + (llm_result.get(category, []) or [])
+    if any(len(p.split()) >= 4 for p in all_phrases):
+        signals += 1
+    return signals / max_signals if max_signals > 0 else 0
+
+# --- V2 Full Pipeline ---
+def improved_full_pipeline(text, skip_content_gate=False):
+    """Enhanced pipeline for conversational transcripts (podcasts, vlogs, advice)."""
+    pipeline_info = {}
+
+    eng = is_english(text)
+    pipeline_info['is_english'] = eng
+    if not eng:
+        pipeline_info['skipped'] = 'non-English text'
+        return {d: [] for d in DISTORTIONS}, pipeline_info
+
+    word_count = len(text.split())
+    if not skip_content_gate:
+        content_type, should_skip = classify_content_type(text)
+        pipeline_info['content_type'] = content_type
+        if should_skip and word_count < 300:
+            pipeline_info['skipped'] = f'content type: {content_type}'
+            return {d: [] for d in DISTORTIONS}, pipeline_info
+        elif should_skip:
+            pipeline_info['content_type'] = f'{content_type} (overridden — long text)'
+    else:
+        pipeline_info['content_type'] = 'pre-filtered'
+
+    pipeline_info['word_count'] = word_count
+    if word_count < 6:
+        pipeline_info['skipped'] = 'text too short (<6 words)'
+        return {d: [] for d in DISTORTIONS}, pipeline_info
+
+    sent_multiplier, sent_score = sentiment_gate(text)
+    if word_count > 2000 and sent_multiplier < 0.8:
+        sent_multiplier = 0.8
+    pipeline_info['sentiment'] = round(sent_score, 3)
+    pipeline_info['sent_multiplier'] = sent_multiplier
+
+    ip_multiplier, ip_ratio = interpersonal_gate(text)
+    pipeline_info['interpersonal_ratio'] = round(ip_ratio, 3)
+    pipeline_info['first_person_ratio'] = round(first_person_ratio(text), 3)
+
+    regex_out = improved_regex_detector_v2(text)
+
+    llm_merged = {d: [] for d in DISTORTIONS}
+    if LLM_AVAILABLE:
+        chunks = split_into_semantic_chunks(text, max_words=500)
+        pipeline_info['llm_chunks'] = len(chunks)
+        for chunk in chunks:
+            llm_raw = call_llm(IMPROVED_LLM_PROMPT, chunk)
+            llm_validated = validate_llm_output(llm_raw, chunk)
+            for d in DISTORTIONS:
+                llm_merged[d].extend(llm_validated.get(d, []))
+        for d in DISTORTIONS:
+            llm_merged[d] = list(dict.fromkeys(llm_merged[d]))
+    pipeline_info['llm_available'] = LLM_AVAILABLE
+
+    final = {d: [] for d in DISTORTIONS}
+    threshold = CONFIDENCE_THRESHOLD_V2 if LLM_AVAILABLE else CONFIDENCE_THRESHOLD_V2_NO_LLM
+
+    for d in DISTORTIONS:
+        base_confidence = compute_confidence_v2(text, regex_out, llm_merged, d)
+        adjusted = base_confidence * sent_multiplier * ip_multiplier
+        regex_phrases = set(regex_out.get(d, []))
+        llm_phrases = set(llm_merged.get(d, []))
+        all_phrases = regex_phrases | llm_phrases
+        if all_phrases and adjusted >= threshold:
+            if regex_phrases and llm_phrases:
+                final[d] = list(all_phrases)
+            elif regex_phrases:
+                final[d] = list(regex_phrases)
+            elif LLM_AVAILABLE:
+                final[d] = list(llm_phrases)
+
+    for d in DISTORTIONS:
+        phrases = list(dict.fromkeys(final[d]))
+        clean = []
+        for p in phrases:
+            p_lower = p.lower().strip()
+            is_sub = any(p_lower in existing.lower() for existing in clean if len(existing) > len(p))
+            is_super = any(existing.lower() in p_lower for existing in clean if len(p) > len(existing))
+            if not is_sub and not is_super:
+                clean.append(p)
+            elif is_super:
+                clean = [c for c in clean if c.lower() not in p_lower]
+                clean.append(p)
+        final[d] = clean
+
+    pipeline_info['confidence_v2'] = {
+        d: round(compute_confidence_v2(text, regex_out, llm_merged, d) * sent_multiplier * ip_multiplier, 2)
         for d in DISTORTIONS if final[d]
     }
     return final, pipeline_info
@@ -779,7 +1244,7 @@ def process_transcripts(csv_path="batch_results_1770374471.csv", platform="youtu
             detail=f"Processing entry {idx+1} of {total_entries}",
             progress=int(60 + (idx / max(total_entries, 1)) * 30)
         )
-        pipeline_result, pipeline_info = full_pipeline(transcript)
+        pipeline_result, pipeline_info = improved_full_pipeline(transcript)
 
         if 'skipped' in pipeline_info:
             print(f"   Skipped ({pipeline_info['skipped']})")
@@ -936,7 +1401,7 @@ def _process_aggregated(df, text_col, title_col, ts_col, platform):
             detail=f"Analyzing day {day_idx+1} of {total_days}",
             progress=int(60 + (day_idx / max(total_days, 1)) * 30)
         )
-        result, info = full_pipeline(combined_text, skip_content_gate=True)
+        result, info = improved_full_pipeline(combined_text, skip_content_gate=True)
         days_processed += 1
 
         if 'skipped' in info:
