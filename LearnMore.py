@@ -144,7 +144,21 @@ class MentalHealthLibrary:
             return None
             
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a Mental Health Educator. Use the provided context to answer accurately. If the answer isn't in the context, say you don't have that information in your library.\n\nContext:\n{context}"),
+            ("system",
+             "You are a Mental Health Educator for the AwareMe application. "
+             "You MUST answer ONLY using the provided context below. "
+             "Do NOT use any outside knowledge whatsoever.\n\n"
+             "STRICT RULES:\n"
+             "1. If the answer is found in the context, answer accurately from it.\n"
+             "2. If the answer is NOT in the context, reply ONLY with: "
+             "\"I don't have that information in my library.\"\n"
+             "3. If the user asks about anything unrelated to mental health or the documents "
+             "(e.g. financial advice, coding, recipes, news, math, summarizing external content, "
+             "or any other off-topic request), reply ONLY with: "
+             "\"I'm sorry, that's outside my area. I can only answer questions based on the "
+             "mental health resources in my library.\"\n"
+             "4. Do NOT provide partial answers, guesses, or helpful redirects for off-topic requests.\n\n"
+             "Context:\n{context}"),
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{input}"),
         ])

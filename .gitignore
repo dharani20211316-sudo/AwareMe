@@ -2,7 +2,6 @@ venv311/
 __pycache__/
 *.pyc
 .env
-*.pdf
 *.csv
 .vscode/
 audit.log
