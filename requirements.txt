@@ -20,5 +20,3 @@ youtube-transcript-api
 yt-dlp
 lxml
 instaloader
-vaderSentiment
-langdetect

@@ -17,6 +17,12 @@ def get_chat_collection():
 def process_chat_data(selected_date, csv_path='chat_history.csv'):
     """Analyze chat history for a given date using the full detection pipeline."""
     try:
+        update_processing_status(
+            "processing", "safespace",
+            step="Loading chat history", step_number=1, total_steps=5,
+            detail="Reading your conversation data",
+            progress=5
+        )
         df = _read_csv_safe(csv_path)
         if df is None or len(df) == 0:
             return {"error": "CSV Load failed or empty"}
@@ -24,6 +30,12 @@ def process_chat_data(selected_date, csv_path='chat_history.csv'):
         return {"error": f"CSV Load failed: {str(e)}"}
 
     # Filter by selected date
+    update_processing_status(
+        "processing", "safespace",
+        step="Filtering conversations", step_number=2, total_steps=5,
+        detail=f"Finding conversations from {selected_date}",
+        progress=15
+    )
     df['Timestamp_dt'] = pd.to_datetime(df['Timestamp'], errors='coerce')
     day_data = df[df['Timestamp_dt'].dt.strftime('%Y-%m-%d') == selected_date].copy()
 
@@ -34,11 +46,19 @@ def process_chat_data(selected_date, csv_path='chat_history.csv'):
     total_batch_flagged_words = 0
     category_flagged_counts = {d: 0 for d in DISTORTIONS}
     final_video_list = []
+    total_entries = len(day_data)
 
-    for idx, row in day_data.iterrows():
+    for idx_count, (idx, row) in enumerate(day_data.iterrows()):
         text = str(row['User Input'])
         if not text or text.lower() == "nan":
             continue
+
+        update_processing_status(
+            "processing", "safespace",
+            step="Analyzing conversations", step_number=3, total_steps=5,
+            detail=f"Analyzing message {idx_count+1} of {total_entries}",
+            progress=int(25 + (idx_count / max(total_entries, 1)) * 55)
+        )
 
         transcript_words = text.split()
         transcript_word_count = len(transcript_words)
@@ -49,7 +69,7 @@ def process_chat_data(selected_date, csv_path='chat_history.csv'):
 
         if 'skipped' in pipeline_info:
             final_video_list.append({
-                "video_title": f"Chat {idx+1}",
+                "video_title": f"Chat {idx_count+1}",
                 "timestamp": row.get('Timestamp'),
                 "transcript": text,
                 "distortion_analysis": {d: [] for d in DISTORTIONS},
@@ -84,7 +104,7 @@ def process_chat_data(selected_date, csv_path='chat_history.csv'):
             category_flagged_counts[d] += sum(category_masks[d])
 
         final_video_list.append({
-            "video_title": f"Chat {idx+1}",
+            "video_title": f"Chat {idx_count+1}",
             "timestamp": row.get('Timestamp'),
             "transcript": text,
             "distortion_analysis": pipeline_result,
@@ -120,6 +140,12 @@ def process_chat_data(selected_date, csv_path='chat_history.csv'):
 
     # Save to MongoDB
     try:
+        update_processing_status(
+            "processing", "safespace",
+            step="Saving results", step_number=5, total_steps=5,
+            detail="Writing analysis to database",
+            progress=95
+        )
         col = get_chat_collection()
         col.insert_one(final_payload)
         update_processing_status("completed", "safespace")

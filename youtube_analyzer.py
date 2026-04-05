@@ -13,7 +13,7 @@ import importlib.util
 import yt_dlp
 from pydub import AudioSegment
 import shutil
-from model_processor import process_transcripts
+from model_processor import process_transcripts, update_processing_status
 import sys
 
 
@@ -289,6 +289,13 @@ def extract_youtube_transcripts_for_date(selected_date: date, df: pd.DataFrame) 
         print(f"\n Processing: {title[:50]}...")
         print(f"URL: {url}")
         
+        update_processing_status(
+            "processing", "youtube",
+            step="Extracting transcripts", step_number=3, total_steps=5,
+            detail=f"Transcript {i+1} of {len(filtered_df)}: {title[:40]}...",
+            progress=int(30 + (i / max(len(filtered_df), 1)) * 25)
+        )
+        
         start_time = time.time()
         transcript = extractor.extract(url, use_direct_transcript=True)
         elapsed_time = time.time() - start_time
@@ -373,10 +380,22 @@ def analyze_youtube_data(selected_date: date, html_file_path: str = "watch-histo
         
         # Step 1: Install required packages
         print("\n📦 Step 1: Checking/Installing required packages...")
+        update_processing_status(
+            "processing", "youtube",
+            step="Initializing", step_number=1, total_steps=5,
+            detail="Setting up analysis environment",
+            progress=5
+        )
         #install_required_packages()
         
         # Step 2: Parse YouTube watch history
         print(f"\n📄 Step 2: Parsing YouTube history...")
+        update_processing_status(
+            "processing", "youtube",
+            step="Parsing watch history", step_number=2, total_steps=5,
+            detail="Reading your YouTube watch history file",
+            progress=15
+        )
         if not os.path.exists(html_file_path):
             return {
                 "status": "error",
@@ -388,6 +407,12 @@ def analyze_youtube_data(selected_date: date, html_file_path: str = "watch-histo
         
         # Step 3: Extract transcripts for selected date
         print(f"\n🎙️ Step 3: Extracting transcripts...")
+        update_processing_status(
+            "processing", "youtube",
+            step="Extracting transcripts", step_number=3, total_steps=5,
+            detail="Downloading and extracting video transcripts",
+            progress=30
+        )
         result = extract_youtube_transcripts_for_date(selected_date, df)
         
         if result["successful_transcripts"] == 0:

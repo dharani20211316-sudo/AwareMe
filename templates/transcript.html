@@ -129,7 +129,7 @@
             }
 
             // Update back link with platform param
-            document.querySelector('.back-btn').href = `/analysis?platform=${platform}`;
+            document.querySelector('.back-btn').href = `/piechartnew.html?platform=${platform}`;
 
             try {
                 const response = await fetch(`/api/get-transcript?title=${encodeURIComponent(title)}&platform=${platform}`);
@@ -144,7 +144,7 @@
                 document.getElementById('display-title').innerText = data.video_title;
                 
                 let transcriptText = data.transcript || "";
-                const modelOutput = data.model_output || data.regex_analysis || {};
+                const modelOutput = data.distortion_analysis || data.model_output || data.regex_analysis || {};
                 const legendBox = document.getElementById('legend-box');
                 legendBox.innerHTML = ''; 
 

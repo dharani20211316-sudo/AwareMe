@@ -710,19 +710,36 @@ def analyze_instagram_data(selected_date: date, html_file_path: str) -> Dict[str
         # Step 1: Resolve download root
         step_t = time.time()
         print(f"\n📂 Step 1: Locating Instagram data...")
+        update_processing_status(
+            "processing", "instagram",
+            step="Locating data", step_number=1, total_steps=5,
+            detail="Finding your Instagram data folder",
+            progress=5
+        )
         ig_root = _resolve_ig_root(html_file_path)
         print(f"   ✅ Root found: {ig_root}  ({time.time()-step_t:.1f}s)")
 
         # Step 2: Parse ALL activity data
         step_t = time.time()
         print(f"\n📄 Step 2: Parsing all Instagram activity...")
-        update_processing_status("processing", platform="instagram")
+        update_processing_status(
+            "processing", "instagram",
+            step="Parsing activity data", step_number=2, total_steps=5,
+            detail="Reading all your Instagram activity files",
+            progress=15
+        )
         df = parse_all_instagram_data(ig_root)
         print(f"   ⏱️ Parsing took {time.time()-step_t:.1f}s")
 
         # Step 3: Extract content for selected date & run analysis
         step_t = time.time()
         print(f"\n📝 Step 3: Extracting content for {selected_date}...")
+        update_processing_status(
+            "processing", "instagram",
+            step="Extracting content", step_number=3, total_steps=5,
+            detail=f"Collecting content from {selected_date}",
+            progress=35
+        )
         result = extract_instagram_content_for_date(selected_date, df)
         print(f"   ⏱️ Extraction + analysis took {time.time()-step_t:.1f}s")
 

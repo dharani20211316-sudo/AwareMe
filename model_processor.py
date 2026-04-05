@@ -508,16 +508,31 @@ def _read_csv_safe(csv_path):
 # ===============================
 # Status Tracking
 # ===============================
-def update_processing_status(status, platform="youtube"):
+def update_processing_status(status, platform="youtube", step=None, step_number=None, total_steps=None, detail=None, progress=None):
     client = MongoClient(MONGO_URI)
     db = client["historyDB"]
-    # Update a specific document to track the state
+    update_fields = {
+        "status": status, 
+        "last_updated": datetime.now()
+    }
+    if step is not None:
+        update_fields["step"] = step
+    if step_number is not None:
+        update_fields["step_number"] = step_number
+    if total_steps is not None:
+        update_fields["total_steps"] = total_steps
+    if detail is not None:
+        update_fields["detail"] = detail
+    if progress is not None:
+        update_fields["progress"] = progress  # 0-100
+    # Clear step info on terminal states
+    if status in ("completed", "error", "idle"):
+        update_fields.setdefault("step", "")
+        update_fields.setdefault("detail", "")
+        update_fields.setdefault("progress", 100 if status == "completed" else 0)
     db["status_tracker"].update_one(
         {"_id": f"{platform}_analysis_task"},
-        {"$set": {
-            "status": status, 
-            "last_updated": datetime.now()
-        }},
+        {"$set": update_fields},
         upsert=True
     )
 
@@ -744,6 +759,7 @@ def process_transcripts(csv_path="batch_results_1770374471.csv", platform="youtu
     total_batch_flagged_words = 0
     category_flagged_counts = {d: 0 for d in DISTORTIONS}
     final_video_list = []
+    total_entries = len(df)
 
     for idx, row in df.iterrows():
         transcript = str(row[text_col])
@@ -755,7 +771,14 @@ def process_transcripts(csv_path="batch_results_1770374471.csv", platform="youtu
         total_batch_words += transcript_word_count
 
         # Run full enhanced pipeline
-        print(f"🔍 Processing {idx+1}/{len(df)}...")
+        print(f"🔍 Processing {idx+1}/{total_entries}...")
+        update_processing_status(
+            "processing", platform,
+            step="Analyzing content",
+            step_number=4, total_steps=5,
+            detail=f"Processing entry {idx+1} of {total_entries}",
+            progress=int(60 + (idx / max(total_entries, 1)) * 30)
+        )
         pipeline_result, pipeline_info = full_pipeline(transcript)
 
         if 'skipped' in pipeline_info:
@@ -838,6 +861,13 @@ def process_transcripts(csv_path="batch_results_1770374471.csv", platform="youtu
         print(f"📊 Content trends: {len(content_trends.get('observations', []))} observations")
 
     try:
+        update_processing_status(
+            "processing", platform,
+            step="Saving results",
+            step_number=5, total_steps=5,
+            detail="Writing analysis to database",
+            progress=95
+        )
         get_db_collection(platform).insert_one(final_payload)
         update_processing_status("completed", platform)
         print(f"💾 Saved Combined Analysis to MongoDB ({platform}).")
@@ -865,8 +895,10 @@ def _process_aggregated(df, text_col, title_col, ts_col, platform):
     category_flagged_counts = {d: 0 for d in DISTORTIONS}
     final_video_list = []
     days_processed = 0
+    day_groups = list(df.groupby('_date'))
+    total_days = len(day_groups)
 
-    for day, group in df.groupby('_date'):
+    for day_idx, (day, group) in enumerate(day_groups):
         # Pre-classify individual posts and filter out non-analyzable ones
         texts = []
         skipped_types = {}
@@ -897,6 +929,13 @@ def _process_aggregated(df, text_col, title_col, ts_col, platform):
             print(f"    -> Still too short, skipping")
             continue
 
+        update_processing_status(
+            "processing", platform,
+            step="Analyzing content",
+            step_number=4, total_steps=5,
+            detail=f"Analyzing day {day_idx+1} of {total_days}",
+            progress=int(60 + (day_idx / max(total_days, 1)) * 30)
+        )
         result, info = full_pipeline(combined_text, skip_content_gate=True)
         days_processed += 1
 
@@ -967,6 +1006,13 @@ def _process_aggregated(df, text_col, title_col, ts_col, platform):
     }
 
     try:
+        update_processing_status(
+            "processing", platform,
+            step="Saving results",
+            step_number=5, total_steps=5,
+            detail="Writing analysis to database",
+            progress=95
+        )
         get_db_collection(platform).insert_one(final_payload)
         update_processing_status("completed", platform)
         print(f"💾 Saved Combined Analysis to MongoDB ({platform}).")

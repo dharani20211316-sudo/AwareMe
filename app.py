@@ -452,8 +452,15 @@ def check_status():
         history_db_ref = mongo_client.get_database("historyDB")
         status_doc = history_db_ref["status_tracker"].find_one({"_id": task_id})
         if status_doc:
-            return jsonify({"status": status_doc["status"]})
-        return jsonify({"status": "idle"})
+            return jsonify({
+                "status": status_doc.get("status", "idle"),
+                "step": status_doc.get("step", ""),
+                "step_number": status_doc.get("step_number", 0),
+                "total_steps": status_doc.get("total_steps", 5),
+                "detail": status_doc.get("detail", ""),
+                "progress": status_doc.get("progress", 0),
+            })
+        return jsonify({"status": "idle", "step": "", "step_number": 0, "total_steps": 5, "detail": "", "progress": 0})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 @app.route("/api/analyze/youtube", methods=["POST"])
