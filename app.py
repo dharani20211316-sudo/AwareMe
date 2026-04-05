@@ -1,5 +1,4 @@
 import os
-import csv
 import logging
 import threading
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
@@ -56,7 +55,6 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 groq_client = Groq(api_key=GROQ_API_KEY)
-CSV_FILE = "chat_history.csv"
 
 # Initialize Mental Health Library
 try:
@@ -79,12 +77,6 @@ logging.basicConfig(
 
 def log_action(username, action, ip=None):
     logging.info(f"user:{username} action:{action} ip:{ip}")
-
-# Initialize CSV if not exists
-if not os.path.exists(CSV_FILE):
-    with open(CSV_FILE, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow(["Timestamp", "Mode", "User Input", "AI Response"])
 
 # ------------------------------
 # MongoDB Setup
@@ -232,16 +224,19 @@ def get_available_dates():
         dates = []
 
         if platform == "safespace":
-            # Read dates from chat_history.csv
-            csv_path = "chat_history.csv"
-            if os.path.exists(csv_path):
-                from model_processor import _read_csv_safe
-                import pandas as pd
-                df = _read_csv_safe(csv_path)
-                if df is not None and 'Timestamp' in df.columns:
-                    df['Timestamp_dt'] = pd.to_datetime(df['Timestamp'], errors='coerce')
-                    df = df.dropna(subset=['Timestamp_dt'])
-                    dates = sorted(df['Timestamp_dt'].dt.strftime('%Y-%m-%d').unique().tolist())
+            # Read dates from MongoDB chat_history collection
+            from chatbot import get_chat_history_collection
+            col = get_chat_history_collection()
+            docs = col.find({}, {"Timestamp": 1, "_id": 0})
+            date_set = set()
+            for doc in docs:
+                ts = doc.get("Timestamp", "")
+                if ts:
+                    try:
+                        date_set.add(ts[:10])  # "YYYY-MM-DD"
+                    except Exception:
+                        pass
+            dates = sorted(date_set)
 
         elif platform == "youtube":
             if not uploaded_file:
@@ -379,6 +374,11 @@ def chat_with_ai():
             messages=messages,
         )
         ai_response = completion.choices[0].message.content
+
+        # Save chat to MongoDB
+        from chatbot import log_chat
+        log_chat("SafeSpace", user_message, ai_response)
+
         return jsonify({"reply": ai_response, "label": "Analysis Complete"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

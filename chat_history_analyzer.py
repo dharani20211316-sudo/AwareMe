@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 from pymongo import MongoClient
 from model_processor import (
-    full_pipeline, DISTORTIONS, _read_csv_safe,
+    full_pipeline, DISTORTIONS,
     clean_overlapping_snippets, update_processing_status
 )
 
@@ -14,7 +14,12 @@ def get_chat_collection():
     db = client["historyDB"]
     return db["safespace"]
 
-def process_chat_data(selected_date, csv_path='chat_history.csv'):
+def get_chat_history_collection():
+    client = MongoClient(MONGO_URI)
+    db = client["historyDB"]
+    return db["chat_history"]
+
+def process_chat_data(selected_date):
     """Analyze chat history for a given date using the full detection pipeline."""
     try:
         update_processing_status(
@@ -23,24 +28,22 @@ def process_chat_data(selected_date, csv_path='chat_history.csv'):
             detail="Reading your conversation data",
             progress=5
         )
-        df = _read_csv_safe(csv_path)
-        if df is None or len(df) == 0:
-            return {"error": "CSV Load failed or empty"}
+        col = get_chat_history_collection()
+        docs = list(col.find({"Timestamp": {"$regex": f"^{selected_date}"}}))
+        if not docs:
+            return {"error": f"No logs found for {selected_date}"}
+        df = pd.DataFrame(docs)
     except Exception as e:
-        return {"error": f"CSV Load failed: {str(e)}"}
+        return {"error": f"Failed to load chat history: {str(e)}"}
 
-    # Filter by selected date
     update_processing_status(
         "processing", "safespace",
         step="Filtering conversations", step_number=2, total_steps=5,
         detail=f"Finding conversations from {selected_date}",
         progress=15
     )
-    df['Timestamp_dt'] = pd.to_datetime(df['Timestamp'], errors='coerce')
-    day_data = df[df['Timestamp_dt'].dt.strftime('%Y-%m-%d') == selected_date].copy()
 
-    if day_data.empty:
-        return {"error": f"No logs found for {selected_date}"}
+    day_data = df
 
     total_batch_words = 0
     total_batch_flagged_words = 0

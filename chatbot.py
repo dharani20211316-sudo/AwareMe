@@ -1,7 +1,7 @@
-import csv
 import os
 from datetime import datetime
 from groq import Groq
+from pymongo import MongoClient
 from dotenv import load_dotenv
 
 # Load .env file
@@ -10,24 +10,25 @@ load_dotenv()
 # ---------------------------
 # INITIALIZE
 # ---------------------------
-# It is better to load the key from an environment variable for security
 API_KEY = os.getenv("GROQ_API_KEY")
+MONGO_URI = os.getenv("MONGO_URI")
 client = Groq(api_key=API_KEY)
-CSV_FILE = "chat_history.csv"
 
-# Ensure CSV exists with headers
-def initialize_csv():
-    if not os.path.exists(CSV_FILE):
-        with open(CSV_FILE, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(["Timestamp", "Mode", "User Input", "AI Response"])
+def get_chat_history_collection():
+    mongo_client = MongoClient(MONGO_URI)
+    db = mongo_client["historyDB"]
+    return db["chat_history"]
 
 def log_chat(mode, user_text, ai_text):
-    """Saves the chat interaction to a CSV file."""
+    """Saves the chat interaction to MongoDB."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(CSV_FILE, 'a', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow([timestamp, mode, user_text, ai_text])
+    col = get_chat_history_collection()
+    col.insert_one({
+        "Timestamp": timestamp,
+        "Mode": mode,
+        "User Input": user_text,
+        "AI Response": ai_text
+    })
 
 def get_ai_response(user_message):
     """
@@ -54,7 +55,7 @@ def get_ai_response(user_message):
         
         ai_reply = response.choices[0].message.content
         
-        # Log to CSV automatically
+        # Log to MongoDB
         log_chat("Web-Chat", user_message, ai_reply)
         
         return ai_reply
@@ -62,6 +63,3 @@ def get_ai_response(user_message):
     except Exception as e:
         print(f"Error calling Groq API: {e}")
         return "I'm sorry, I'm having trouble processing that right now."
-
-# Initialize the CSV file when the module is loaded
-initialize_csv()
