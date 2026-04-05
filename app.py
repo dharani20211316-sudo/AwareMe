@@ -365,19 +365,9 @@ def chat_with_ai():
     try:
         data = request.get_json()
         user_message = data.get("message")
-        messages = [
-            {"role": "system", "content": "You are AwareMe, an empathetic therapeutic assistant."},
-            {"role": "user", "content": user_message}
-        ]
-        completion = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=messages,
-        )
-        ai_response = completion.choices[0].message.content
 
-        # Save chat to MongoDB
-        from chatbot import log_chat
-        log_chat("SafeSpace", user_message, ai_response)
+        from chatbot import get_ai_response
+        ai_response = get_ai_response(user_message)
 
         return jsonify({"reply": ai_response, "label": "Analysis Complete"}), 200
     except Exception as e:

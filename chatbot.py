@@ -55,7 +55,12 @@ def get_ai_response(user_message):
                     "emotional well-being, mood, and cognitive patterns. "
                     "Feel free to ask me anything related to that!\"\n\n"
                     "Do NOT provide any partial answer or helpful redirect for off-topic "
-                    "requests. Be empathetic, grounded, and helpful ONLY within your domain."
+                    "requests. Be empathetic, grounded, and helpful ONLY within your domain.\n\n"
+                    "CONVERSATION ENDING: When the user says goodbye, thank you, bye, take care, "
+                    "that's all, I'm done, or anything that signals the conversation is over, "
+                    "respond with a warm closing message and include the exact phrase "
+                    "[CONVERSATION_END] at the very end of your response (on its own line). "
+                    "This signals the system to gracefully close the chat."
                 )
             },
             {"role": "user", "content": user_message}

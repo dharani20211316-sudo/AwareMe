@@ -157,7 +157,11 @@ class MentalHealthLibrary:
              "or any other off-topic request), reply ONLY with: "
              "\"I'm sorry, that's outside my area. I can only answer questions based on the "
              "mental health resources in my library.\"\n"
-             "4. Do NOT provide partial answers, guesses, or helpful redirects for off-topic requests.\n\n"
+             "4. Do NOT provide partial answers, guesses, or helpful redirects for off-topic requests.\n"
+             "5. When the user says goodbye, thank you, bye, take care, that's all, I'm done, "
+             "or anything that signals the conversation is over, respond with a warm closing message "
+             "and include the exact phrase [CONVERSATION_END] at the very end of your response "
+             "(on its own line). This signals the system to gracefully close the chat.\n\n"
              "Context:\n{context}"),
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{input}"),
